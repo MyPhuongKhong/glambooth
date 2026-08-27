@@ -11,6 +11,7 @@ import ProtectedRoute from "./components/ProtectedRoute/ProtectedRoute";
 import HomePage from "./pages/Home/HomePage";
 import LoginPage from "./pages/Auth/LoginPage";
 import RegisterPage from "./pages/Auth/RegisterPage";
+import GlamBotPage from "./pages/GlamBot/GlamBotPage";
 
 // Placeholder component cho các module tiếp theo
 function PlaceholderModule({ title, icon, subtitle, color, chipText }) {
@@ -274,17 +275,13 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
 
-          {/* Các Route tính năng (Placeholder cho Module 2 & 3) */}
+          {/* GlamBot Video Page (Bảo vệ bởi ProtectedRoute) */}
           <Route
             path="/glambot"
             element={
-              <PlaceholderModule
-                title="GlamBot Video"
-                icon="🎬"
-                subtitle="Máy quay chuyển động chậm kết hợp hiệu ứng glitch thảm đỏ Hollywood đang được tích hợp."
-                color="#ec4899"
-                chipText="Module 2"
-              />
+              <ProtectedRoute>
+                <GlamBotPage />
+              </ProtectedRoute>
             }
           />
           <Route

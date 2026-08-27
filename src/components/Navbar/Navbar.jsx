@@ -212,18 +212,20 @@ export default function Navbar() {
                     onClose={handleCloseMenu}
                     transformOrigin={{ horizontal: "right", vertical: "top" }}
                     anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
-                    PaperProps={{
-                      elevation: 0,
-                      sx: {
-                        mt: 1.5,
-                        minWidth: 210,
-                        borderRadius: "20px",
-                        backgroundColor: "rgba(255, 255, 255, 0.8)",
-                        backdropFilter: "blur(20px)",
-                        WebkitBackdropFilter: "blur(20px)",
-                        border: "1px solid rgba(255, 255, 255, 0.7)",
-                        boxShadow: "0 12px 36px 0 rgba(31, 38, 135, 0.12)",
-                        p: 1,
+                    slotProps={{
+                      paper: {
+                        elevation: 0,
+                        sx: {
+                          mt: 1.5,
+                          minWidth: 210,
+                          borderRadius: "20px",
+                          backgroundColor: "rgba(255, 255, 255, 0.8)",
+                          backdropFilter: "blur(20px)",
+                          WebkitBackdropFilter: "blur(20px)",
+                          border: "1px solid rgba(255, 255, 255, 0.7)",
+                          boxShadow: "0 12px 36px 0 rgba(31, 38, 135, 0.12)",
+                          p: 1,
+                        },
                       },
                     }}
                   >
