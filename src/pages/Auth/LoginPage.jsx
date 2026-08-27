@@ -148,13 +148,15 @@ export default function LoginPage() {
               disabled={isSubmitting}
               autoComplete="email"
               autoFocus
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <EmailOutlinedIcon sx={{ color: "#ec4899" }} />
-                  </InputAdornment>
-                ),
-                sx: { borderRadius: "14px", backgroundColor: "rgba(255,255,255,0.6)" },
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <EmailOutlinedIcon sx={{ color: "#ec4899" }} />
+                    </InputAdornment>
+                  ),
+                  sx: { borderRadius: "14px", backgroundColor: "rgba(255,255,255,0.6)" },
+                },
               }}
             />
 
@@ -169,24 +171,26 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               disabled={isSubmitting}
               autoComplete="current-password"
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <LockOutlinedIcon sx={{ color: "#ec4899" }} />
-                  </InputAdornment>
-                ),
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      onClick={() => setShowPassword(!showPassword)}
-                      edge="end"
-                      aria-label="toggle password visibility"
-                    >
-                      {showPassword ? <VisibilityOff /> : <Visibility />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-                sx: { borderRadius: "14px", backgroundColor: "rgba(255,255,255,0.6)" },
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <LockOutlinedIcon sx={{ color: "#ec4899" }} />
+                    </InputAdornment>
+                  ),
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() => setShowPassword(!showPassword)}
+                        edge="end"
+                        aria-label="toggle password visibility"
+                      >
+                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                  sx: { borderRadius: "14px", backgroundColor: "rgba(255,255,255,0.6)" },
+                },
               }}
             />
 

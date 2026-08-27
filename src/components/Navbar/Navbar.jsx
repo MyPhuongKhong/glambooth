@@ -289,15 +289,23 @@ export default function Navbar() {
                       backgroundColor: "rgba(236, 72, 153, 0.1)",
                       color: "#ec4899",
                       fontWeight: 600,
-                      padding: "8px 20px",
+                      padding: { xs: "8px 12px", sm: "8px 20px" },
                       borderRadius: "100px",
                       border: "none",
+                      whiteSpace: "nowrap",
+                      minWidth: { xs: "auto", sm: "fit-content" },
+                      "& .MuiButton-startIcon": {
+                        mr: { xs: 0, sm: 1 },
+                        ml: { xs: 0, sm: -0.5 },
+                      },
                       "&:hover": {
                         backgroundColor: "rgba(236, 72, 153, 0.18)",
                       },
                     }}
                   >
-                    Đăng nhập
+                    <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>
+                      Đăng nhập
+                    </Box>
                   </Button>
                   <Button
                     id="btn-nav-register"
@@ -310,16 +318,24 @@ export default function Navbar() {
                       backgroundColor: "#ec4899",
                       color: "#ffffff",
                       fontWeight: 600,
-                      padding: "8px 22px",
+                      padding: { xs: "8px 12px", sm: "8px 22px" },
                       borderRadius: "100px",
                       boxShadow: "0 6px 18px rgba(236, 72, 153, 0.35)",
+                      whiteSpace: "nowrap",
+                      minWidth: { xs: "auto", sm: "fit-content" },
+                      "& .MuiButton-startIcon": {
+                        mr: { xs: 0, sm: 1 },
+                        ml: { xs: 0, sm: -0.5 },
+                      },
                       "&:hover": {
                         backgroundColor: "#db2777",
                         boxShadow: "0 8px 22px rgba(236, 72, 153, 0.45)",
                       },
                     }}
                   >
-                    Đăng ký
+                    <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>
+                      Đăng ký
+                    </Box>
                   </Button>
                 </Box>
               )}

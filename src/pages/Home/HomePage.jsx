@@ -10,6 +10,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useAuth } from "../../contexts/AuthContext";
+import Footer from "../../components/Footer/Footer";
 
 export default function HomePage() {
   const { currentUser } = useAuth();
@@ -125,12 +126,25 @@ export default function HomePage() {
         </Box>
 
         {/* 3 Thẻ tính năng Frosted Glass */}
-        <Grid container spacing={{ xs: 3, md: 4 }} justifyContent="center" sx={{ maxWidth: 1050, width: "100%" }}>
+        <Grid
+          container
+          spacing={{ xs: 3, md: 4 }}
+          sx={{
+            width: "100%",
+            justifyContent: "center",
+            alignItems: "stretch",
+          }}
+        >
           {featureCards.map((card) => (
-            <Grid item xs={12} sm={6} md={4} key={card.id}>
+            <Grid
+              key={card.id}
+              size={{ xs: 12, sm: 6, md: 4 }}
+              sx={{ display: "flex" }}
+            >
               <Box
                 id={card.id}
                 sx={{
+                  width: "100%",
                   height: "100%",
                   display: "flex",
                   flexDirection: "column",
@@ -247,52 +261,7 @@ export default function HomePage() {
       </Container>
 
       {/* Footer */}
-      <Container maxWidth="xl" sx={{ mt: { xs: 5, md: 8 } }}>
-        <Box
-          component="footer"
-          sx={{
-            display: "flex",
-            flexDirection: { xs: "column", sm: "row" },
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 2,
-            py: 2,
-            px: { xs: 2, sm: 3 },
-            color: "#9ca3af",
-            fontSize: "0.875rem",
-            fontFamily: "'Quicksand', sans-serif",
-            fontWeight: 500,
-          }}
-        >
-          <Typography variant="body2" sx={{ color: "#9ca3af", fontWeight: 500 }}>
-            © 2024 GlamBooth Studio. All rights reserved.
-          </Typography>
-          <Box sx={{ display: "flex", gap: 3 }}>
-            <Typography
-              component="span"
-              sx={{
-                cursor: "pointer",
-                color: "#9ca3af",
-                fontSize: "0.875rem",
-                "&:hover": { color: "#ec4899" },
-              }}
-            >
-              Điều khoản
-            </Typography>
-            <Typography
-              component="span"
-              sx={{
-                cursor: "pointer",
-                color: "#9ca3af",
-                fontSize: "0.875rem",
-                "&:hover": { color: "#ec4899" },
-              }}
-            >
-              Liên hệ
-            </Typography>
-          </Box>
-        </Box>
-      </Container>
+      <Footer />
     </Box>
   );
 }
