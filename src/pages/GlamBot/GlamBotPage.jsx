@@ -16,15 +16,14 @@ import {
 import {
   Video as VideoIcon,
   Square as SquareIcon,
-  Play as PlayIcon,
   RotateCcw as RotateCcwIcon,
   Upload as UploadIcon,
   CheckCircle2 as CheckCircle2Icon,
-  Camera as CameraIcon,
   Film as FilmIcon,
   Sparkles as SparklesIcon,
   ArrowLeft as ArrowLeftIcon,
   AlertCircle as AlertCircleIcon,
+  Trash2 as Trash2Icon,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import toast from "react-hot-toast";
@@ -33,8 +32,9 @@ import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { useAuth } from "../../contexts/AuthContext";
 import { uploadToCloudinary } from "../../cloudinary/upload";
 import { db } from "../../firebase/config";
+import GlamBotEffect from "../../components/GlamBot/GlamBotEffect";
 
-// Hàm xác định định dạng video được trình duyệt hỗ trợ
+// Xác định định dạng video tương thích trên trình duyệt
 function getSupportedMimeType() {
   const types = [
     "video/webm;codecs=vp9,opus",
@@ -76,6 +76,7 @@ export default function GlamBotPage() {
 
   // Trạng thái lưu / upload
   const [isSaving, setIsSaving] = useState(false);
+  const [savingType, setSavingType] = useState(null); // 'original' | 'glambot'
   const [savedSuccessIndex, setSavedSuccessIndex] = useState(null);
 
   // Khởi tạo Camera
@@ -231,13 +232,78 @@ export default function GlamBotPage() {
     setIsRecording(false);
   };
 
-  // Chọn video để xem lại và lưu
+  // Chọn video để xem lại và chỉnh hiệu ứng
   const handleSelectVideo = (index) => {
     setSelectedVideoIndex(index);
   };
 
-  // Lưu video lên Cloudinary + Firestore
-  const handleSaveVideo = async () => {
+  // Huỷ bỏ / Không lưu video đang chọn
+  const handleDiscardVideo = () => {
+    if (selectedVideoIndex === null || !recordedVideos[selectedVideoIndex]) return;
+
+    const videoToDiscard = recordedVideos[selectedVideoIndex];
+    if (videoToDiscard?.url) {
+      URL.revokeObjectURL(videoToDiscard.url);
+    }
+
+    setRecordedVideos((prev) => prev.filter((_, i) => i !== selectedVideoIndex));
+    setSelectedVideoIndex(null);
+    if (savedSuccessIndex === selectedVideoIndex) {
+      setSavedSuccessIndex(null);
+    }
+    toast.success("Đã xoá video 🗑️");
+  };
+
+  // Helper hiển thị thông báo Toast thành công
+  const showSavedSuccessToast = () => {
+    toast.custom(
+      (t) => (
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1.5,
+            background: "rgba(255, 255, 255, 0.95)",
+            backdropFilter: "blur(16px)",
+            p: 1.5,
+            px: 2.5,
+            borderRadius: "100px",
+            border: "1px solid rgba(236, 72, 153, 0.3)",
+            boxShadow: "0 12px 30px rgba(236, 72, 153, 0.25)",
+          }}
+        >
+          <Typography sx={{ fontWeight: 700, color: "#1f2937", fontSize: "0.95rem" }}>
+            Video saved! 🎉
+          </Typography>
+          <Button
+            size="small"
+            variant="contained"
+            onClick={() => {
+              toast.dismiss(t.id);
+              navigate("/profile");
+            }}
+            sx={{
+              borderRadius: "100px",
+              backgroundColor: "#ec4899",
+              color: "#ffffff",
+              fontWeight: 600,
+              fontSize: "0.8rem",
+              textTransform: "none",
+              py: 0.5,
+              px: 1.8,
+              "&:hover": { backgroundColor: "#db2777" },
+            }}
+          >
+            View in Album
+          </Button>
+        </Box>
+      ),
+      { duration: 5000 }
+    );
+  };
+
+  // 1. Lưu video gốc (chưa qua hiệu ứng GlamBot)
+  const handleSaveOriginalVideo = async () => {
     if (selectedVideoIndex === null || !recordedVideos[selectedVideoIndex]) {
       toast.error("Vui lòng chọn 1 video để lưu!");
       return;
@@ -251,80 +317,76 @@ export default function GlamBotPage() {
 
     const targetVideo = recordedVideos[selectedVideoIndex];
     setIsSaving(true);
+    setSavingType("original");
 
     try {
-      // 1. Chuyển Blob thành File object
       const extension = targetVideo.mimeType.includes("mp4") ? "mp4" : "webm";
       const file = new File(
         [targetVideo.blob],
-        `glambot_${currentUser.uid}_${Date.now()}.${extension}`,
+        `glambot_raw_${currentUser.uid}_${Date.now()}.${extension}`,
         { type: targetVideo.mimeType }
       );
 
-      // 2. Upload lên Cloudinary thư mục 'glambot'
       const uploadResult = await uploadToCloudinary(file, "glambot");
 
-      // 3. Lưu bản ghi vào Firestore collection 'videos'
       await addDoc(collection(db, "videos"), {
         userId: currentUser.uid,
         url: uploadResult.url,
         publicId: uploadResult.publicId || "",
         type: "glambot",
+        isOriginal: true,
         createdAt: serverTimestamp(),
       });
 
       setSavedSuccessIndex(selectedVideoIndex);
-
-      // 4. Hiển thị thông báo thành công với nút Xem trong Album
-      toast.custom(
-        (t) => (
-          <Box
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              gap: 1.5,
-              background: "rgba(255, 255, 255, 0.95)",
-              backdropFilter: "blur(16px)",
-              p: 1.5,
-              px: 2.5,
-              borderRadius: "100px",
-              border: "1px solid rgba(236, 72, 153, 0.3)",
-              boxShadow: "0 12px 30px rgba(236, 72, 153, 0.25)",
-            }}
-          >
-            <Typography sx={{ fontWeight: 700, color: "#1f2937", fontSize: "0.95rem" }}>
-              Video saved! 🎉
-            </Typography>
-            <Button
-              size="small"
-              variant="contained"
-              onClick={() => {
-                toast.dismiss(t.id);
-                navigate("/profile");
-              }}
-              sx={{
-                borderRadius: "100px",
-                backgroundColor: "#ec4899",
-                color: "#ffffff",
-                fontWeight: 600,
-                fontSize: "0.8rem",
-                textTransform: "none",
-                py: 0.5,
-                px: 1.8,
-                "&:hover": { backgroundColor: "#db2777" },
-              }}
-            >
-              View in Album
-            </Button>
-          </Box>
-        ),
-        { duration: 5000 }
-      );
+      showSavedSuccessToast();
     } catch (error) {
-      console.error("Save video error:", error);
-      toast.error("Lưu video thất bại. Vui lòng thử lại!");
+      console.error("Save original video error:", error);
+      toast.error("Lưu video gốc thất bại. Vui lòng thử lại!");
     } finally {
       setIsSaving(false);
+      setSavingType(null);
+    }
+  };
+
+  // 2. Lưu video sau khi xuất hiệu ứng GlamBot Cinematic
+  const handleGlamBotExportComplete = async (exportedBlob) => {
+    if (!currentUser) {
+      toast.error("Vui lòng đăng nhập để lưu video!");
+      navigate("/login");
+      return;
+    }
+
+    setIsSaving(true);
+    setSavingType("glambot");
+
+    try {
+      const extension = exportedBlob.type.includes("mp4") ? "mp4" : "webm";
+      const file = new File(
+        [exportedBlob],
+        `glambot_cinematic_${currentUser.uid}_${Date.now()}.${extension}`,
+        { type: exportedBlob.type || "video/webm" }
+      );
+
+      const uploadResult = await uploadToCloudinary(file, "glambot");
+
+      await addDoc(collection(db, "videos"), {
+        userId: currentUser.uid,
+        url: uploadResult.url,
+        publicId: uploadResult.publicId || "",
+        type: "glambot",
+        effect: "cinematic_transform",
+        createdAt: serverTimestamp(),
+      });
+
+      setSavedSuccessIndex(selectedVideoIndex);
+      showSavedSuccessToast();
+    } catch (error) {
+      console.error("Save GlamBot video error:", error);
+      toast.error("Lưu GlamBot video thất bại. Vui lòng thử lại!");
+    } finally {
+      setIsSaving(false);
+      setSavingType(null);
     }
   };
 
@@ -422,6 +484,9 @@ export default function GlamBotPage() {
       </Box>
     );
   }
+
+  const currentSelectedVideo =
+    selectedVideoIndex !== null ? recordedVideos[selectedVideoIndex] : null;
 
   return (
     <Box
@@ -915,29 +980,97 @@ export default function GlamBotPage() {
               })}
             </Box>
 
-            {/* Nút Lưu Video */}
+            {/* Các Nút Thao Tác: Không lưu, Lưu video gốc & Lưu GlamBot Video */}
             {selectedVideoIndex !== null && (
-              <Box sx={{ mt: 3, textAlign: "center" }}>
+              <Box
+                sx={{
+                  mt: 3,
+                  display: "flex",
+                  flexDirection: { xs: "column", sm: "row" },
+                  gap: 1.5,
+                  alignItems: "center",
+                }}
+              >
                 <Button
-                  id="btn-save-video"
-                  variant="contained"
+                  id="btn-discard-video"
+                  variant="outlined"
+                  color="error"
                   fullWidth
                   disabled={isSaving}
-                  onClick={handleSaveVideo}
+                  onClick={handleDiscardVideo}
+                  startIcon={<Trash2Icon size={18} />}
+                  sx={{
+                    py: 1.2,
+                    borderRadius: "100px",
+                    fontWeight: 700,
+                    fontSize: "0.9rem",
+                    fontFamily: "'Quicksand', sans-serif",
+                    textTransform: "none",
+                  }}
+                >
+                  Không lưu
+                </Button>
+
+                <Button
+                  id="btn-save-original-video"
+                  variant="outlined"
+                  fullWidth
+                  disabled={isSaving}
+                  onClick={handleSaveOriginalVideo}
                   startIcon={
-                    isSaving ? (
+                    isSaving && savingType === "original" ? (
                       <CircularProgress size={18} color="inherit" />
                     ) : (
                       <UploadIcon size={18} />
                     )
                   }
                   sx={{
-                    py: 1.3,
+                    py: 1.2,
+                    borderRadius: "100px",
+                    borderColor: "#ec4899",
+                    color: "#ec4899",
+                    fontWeight: 700,
+                    fontSize: "0.9rem",
+                    fontFamily: "'Quicksand', sans-serif",
+                    textTransform: "none",
+                    "&:hover": {
+                      borderColor: "#db2777",
+                      backgroundColor: "rgba(236, 72, 153, 0.08)",
+                    },
+                  }}
+                >
+                  {isSaving && savingType === "original"
+                    ? "Đang lưu video gốc..."
+                    : "Lưu video gốc"}
+                </Button>
+
+                <Button
+                  id="btn-save-glambot-video"
+                  variant="contained"
+                  fullWidth
+                  disabled={isSaving}
+                  onClick={() => {
+                    const exportBtn = document.getElementById("btn-export-glambot-video");
+                    if (exportBtn) {
+                      exportBtn.click();
+                    } else {
+                      handleSaveOriginalVideo();
+                    }
+                  }}
+                  startIcon={
+                    isSaving && savingType === "glambot" ? (
+                      <CircularProgress size={18} color="inherit" />
+                    ) : (
+                      <SparklesIcon size={18} />
+                    )
+                  }
+                  sx={{
+                    py: 1.2,
                     borderRadius: "100px",
                     backgroundColor: "#ec4899",
                     color: "#ffffff",
                     fontWeight: 700,
-                    fontSize: "0.95rem",
+                    fontSize: "0.9rem",
                     fontFamily: "'Quicksand', sans-serif",
                     textTransform: "none",
                     boxShadow: "0 6px 20px rgba(236, 72, 153, 0.35)",
@@ -947,13 +1080,22 @@ export default function GlamBotPage() {
                     },
                   }}
                 >
-                  {isSaving
-                    ? "Đang tải video lên Cloudinary..."
-                    : `Lưu video này (Lần ${selectedVideoIndex + 1})`}
+                  {isSaving && savingType === "glambot"
+                    ? "Đang tải GlamBot..."
+                    : "Lưu GlamBot Video"}
                 </Button>
               </Box>
             )}
           </Box>
+        )}
+
+        {/* Hiệu ứng GlamBot Cinematic Canvas Preview & Export Component */}
+        {currentSelectedVideo && (
+          <GlamBotEffect
+            key={currentSelectedVideo.id}
+            videoBlob={currentSelectedVideo.blob}
+            onExportComplete={handleGlamBotExportComplete}
+          />
         )}
       </Container>
     </Box>
