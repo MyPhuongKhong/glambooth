@@ -1,5 +1,5 @@
 // FILE: src/pages/GlamBot/GlamBotPage.jsx
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate, Link as RouterLink } from "react-router-dom";
 import {
   Box,
@@ -9,21 +9,22 @@ import {
   Paper,
   Chip,
   CircularProgress,
-  IconButton,
   LinearProgress,
-  Tooltip,
+  Grid,
+  IconButton,
 } from "@mui/material";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import PauseIcon from "@mui/icons-material/Pause";
 import {
   Video as VideoIcon,
   Square as SquareIcon,
   RotateCcw as RotateCcwIcon,
   Upload as UploadIcon,
-  CheckCircle2 as CheckCircle2Icon,
   Film as FilmIcon,
   Sparkles as SparklesIcon,
   ArrowLeft as ArrowLeftIcon,
   AlertCircle as AlertCircleIcon,
-  Trash2 as Trash2Icon,
+  X as XIcon,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import toast from "react-hot-toast";
@@ -56,6 +57,8 @@ export default function GlamBotPage() {
 
   // Camera & Recorder References
   const videoLiveRef = useRef(null);
+  const originalVideoRef = useRef(null);
+  const glamBotRef = useRef(null);
   const streamRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
@@ -65,19 +68,33 @@ export default function GlamBotPage() {
   // States
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState(null);
-  const [isCountingDown, setIsCountingDown] = useState(false);
-  const [countdownValue, setCountdownValue] = useState(3);
+  const [countdown, setCountdown] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
 
-  // Danh sách các video đã quay (tối đa 3 lượt)
-  const [recordedVideos, setRecordedVideos] = useState([]);
-  const [selectedVideoIndex, setSelectedVideoIndex] = useState(null);
+  // Video recording state (single recording)
+  const [recordedBlob, setRecordedBlob] = useState(null);
+
+  // Preview Playback State
+  const [isPlayingPreview, setIsPlayingPreview] = useState(false);
 
   // Trạng thái lưu / upload
   const [isSaving, setIsSaving] = useState(false);
   const [savingType, setSavingType] = useState(null); // 'original' | 'glambot'
-  const [savedSuccessIndex, setSavedSuccessIndex] = useState(null);
+
+  // Object URL cho recordedBlob
+  const recordedVideoUrl = useMemo(() => {
+    if (!recordedBlob) return null;
+    return URL.createObjectURL(recordedBlob);
+  }, [recordedBlob]);
+
+  useEffect(() => {
+    return () => {
+      if (recordedVideoUrl) {
+        URL.revokeObjectURL(recordedVideoUrl);
+      }
+    };
+  }, [recordedVideoUrl]);
 
   // Khởi tạo Camera
   const startCamera = async () => {
@@ -132,32 +149,27 @@ export default function GlamBotPage() {
 
   // Xử lý đếm ngược 3...2...1 trước khi bắt đầu quay
   const handleStartCountdown = () => {
-    if (recordedVideos.length >= 3) {
-      toast.error("Bạn đã hoàn thành tối đa 3 lần quay thử!");
-      return;
-    }
     if (!cameraReady || !streamRef.current) {
       toast.error("Camera chưa sẵn sàng!");
       return;
     }
 
-    setIsCountingDown(true);
-    setCountdownValue(3);
+    setCountdown(3);
 
-    let currentCount = 3;
+    let count = 3;
     countdownTimerRef.current = setInterval(() => {
-      currentCount -= 1;
-      if (currentCount > 0) {
-        setCountdownValue(currentCount);
+      count -= 1;
+      if (count > 0) {
+        setCountdown(count);
       } else {
         clearInterval(countdownTimerRef.current);
-        setIsCountingDown(false);
+        setCountdown(null);
         startRecording();
       }
     }, 1000);
   };
 
-  // Bắt đầu quay video
+  // Bắt đầu quay video (6 giây)
   const startRecording = () => {
     try {
       recordedChunksRef.current = [];
@@ -176,26 +188,10 @@ export default function GlamBotPage() {
       mediaRecorder.onstop = () => {
         const mime = mediaRecorder.mimeType || "video/webm";
         const blob = new Blob(recordedChunksRef.current, { type: mime });
-        const videoUrl = URL.createObjectURL(blob);
+        setRecordedBlob(blob);
+        setIsPlayingPreview(false);
 
-        setRecordedVideos((prev) => {
-          const newIndex = prev.length;
-          const updated = [
-            ...prev,
-            {
-              id: Date.now(),
-              blob,
-              url: videoUrl,
-              mimeType: mime,
-              duration: 10,
-              createdAt: new Date(),
-            },
-          ];
-          setSelectedVideoIndex(newIndex);
-          return updated;
-        });
-
-        toast.success(`Đã quay xong lần ${recordedVideos.length + 1}! 🎉`, {
+        toast.success("Đã quay xong video 6s! ✨", {
           icon: "🎬",
         });
       };
@@ -204,12 +200,12 @@ export default function GlamBotPage() {
       setIsRecording(true);
       setRecordingSeconds(0);
 
-      // Bộ đếm thời gian 10 giây
+      // Bộ đếm thời gian 6 giây
       let seconds = 0;
       recordingTimerRef.current = setInterval(() => {
         seconds += 1;
         setRecordingSeconds(seconds);
-        if (seconds >= 10) {
+        if (seconds >= 6) {
           stopRecording();
         }
       }, 1000);
@@ -232,26 +228,36 @@ export default function GlamBotPage() {
     setIsRecording(false);
   };
 
-  // Chọn video để xem lại và chỉnh hiệu ứng
-  const handleSelectVideo = (index) => {
-    setSelectedVideoIndex(index);
+  // FIX 3: Điều khiển phát đồng thời cả 2 video bằng nút Play/Pause trung tâm
+  const handleTogglePlayBoth = () => {
+    if (isPlayingPreview) {
+      // Tạm dừng cả 2 video
+      if (originalVideoRef.current) {
+        originalVideoRef.current.pause();
+      }
+      if (glamBotRef.current) {
+        glamBotRef.current.pause();
+      }
+      setIsPlayingPreview(false);
+    } else {
+      // Phát cả 2 video từ đầu đồng bộ
+      if (originalVideoRef.current) {
+        originalVideoRef.current.currentTime = 0;
+        originalVideoRef.current.play().catch((err) => console.warn("Original play failed:", err));
+      }
+      if (glamBotRef.current) {
+        glamBotRef.current.play();
+      }
+      setIsPlayingPreview(true);
+    }
   };
 
-  // Huỷ bỏ / Không lưu video đang chọn
-  const handleDiscardVideo = () => {
-    if (selectedVideoIndex === null || !recordedVideos[selectedVideoIndex]) return;
-
-    const videoToDiscard = recordedVideos[selectedVideoIndex];
-    if (videoToDiscard?.url) {
-      URL.revokeObjectURL(videoToDiscard.url);
+  const handlePlaybackEnded = () => {
+    setIsPlayingPreview(false);
+    if (originalVideoRef.current) {
+      originalVideoRef.current.pause();
+      originalVideoRef.current.currentTime = 0;
     }
-
-    setRecordedVideos((prev) => prev.filter((_, i) => i !== selectedVideoIndex));
-    setSelectedVideoIndex(null);
-    if (savedSuccessIndex === selectedVideoIndex) {
-      setSavedSuccessIndex(null);
-    }
-    toast.success("Đã xoá video 🗑️");
   };
 
   // Helper hiển thị thông báo Toast thành công
@@ -304,8 +310,8 @@ export default function GlamBotPage() {
 
   // 1. Lưu video gốc (chưa qua hiệu ứng GlamBot)
   const handleSaveOriginalVideo = async () => {
-    if (selectedVideoIndex === null || !recordedVideos[selectedVideoIndex]) {
-      toast.error("Vui lòng chọn 1 video để lưu!");
+    if (!recordedBlob) {
+      toast.error("Vui lòng quay video trước khi lưu!");
       return;
     }
 
@@ -315,16 +321,16 @@ export default function GlamBotPage() {
       return;
     }
 
-    const targetVideo = recordedVideos[selectedVideoIndex];
     setIsSaving(true);
     setSavingType("original");
 
     try {
-      const extension = targetVideo.mimeType.includes("mp4") ? "mp4" : "webm";
+      const mime = recordedBlob.type || "video/webm";
+      const extension = mime.includes("mp4") ? "mp4" : "webm";
       const file = new File(
-        [targetVideo.blob],
+        [recordedBlob],
         `glambot_raw_${currentUser.uid}_${Date.now()}.${extension}`,
-        { type: targetVideo.mimeType }
+        { type: mime }
       );
 
       const uploadResult = await uploadToCloudinary(file, "glambot");
@@ -338,7 +344,6 @@ export default function GlamBotPage() {
         createdAt: serverTimestamp(),
       });
 
-      setSavedSuccessIndex(selectedVideoIndex);
       showSavedSuccessToast();
     } catch (error) {
       console.error("Save original video error:", error);
@@ -349,16 +354,29 @@ export default function GlamBotPage() {
     }
   };
 
-  // 2. Lưu video sau khi xuất hiệu ứng GlamBot Cinematic
-  const handleGlamBotExportComplete = async (exportedBlob) => {
+  // 2. Kích hoạt xuất & Lưu video sau khi xuất hiệu ứng GlamBot Cinematic
+  const handleTriggerSaveGlamBot = () => {
     if (!currentUser) {
       toast.error("Vui lòng đăng nhập để lưu video!");
       navigate("/login");
       return;
     }
 
-    setIsSaving(true);
-    setSavingType("glambot");
+    if (glamBotRef.current) {
+      setIsSaving(true);
+      setSavingType("glambot");
+      glamBotRef.current.exportVideo();
+    }
+  };
+
+  const handleGlamBotExportComplete = async (exportedBlob) => {
+    if (!currentUser) {
+      toast.error("Vui lòng đăng nhập để lưu video!");
+      navigate("/login");
+      setIsSaving(false);
+      setSavingType(null);
+      return;
+    }
 
     try {
       const extension = exportedBlob.type.includes("mp4") ? "mp4" : "webm";
@@ -375,11 +393,10 @@ export default function GlamBotPage() {
         url: uploadResult.url,
         publicId: uploadResult.publicId || "",
         type: "glambot",
-        effect: "cinematic_transform",
+        effect: "cinematic_slowmo_transform",
         createdAt: serverTimestamp(),
       });
 
-      setSavedSuccessIndex(selectedVideoIndex);
       showSavedSuccessToast();
     } catch (error) {
       console.error("Save GlamBot video error:", error);
@@ -390,12 +407,11 @@ export default function GlamBotPage() {
     }
   };
 
-  // Reset quay lại từ đầu
-  const handleResetAttempts = () => {
-    setRecordedVideos([]);
-    setSelectedVideoIndex(null);
-    setSavedSuccessIndex(null);
-    toast.success("Đã làm mới các lượt quay!");
+  // 3. Xử lý "Không lưu"
+  const handleDiscardVideo = () => {
+    setRecordedBlob(null);
+    setIsPlayingPreview(false);
+    navigate("/");
   };
 
   // Nếu người dùng chưa đăng nhập
@@ -485,9 +501,6 @@ export default function GlamBotPage() {
     );
   }
 
-  const currentSelectedVideo =
-    selectedVideoIndex !== null ? recordedVideos[selectedVideoIndex] : null;
-
   return (
     <Box
       id="glambot-page-container"
@@ -501,7 +514,7 @@ export default function GlamBotPage() {
       }}
     >
       <Container
-        maxWidth="md"
+        maxWidth="lg"
         sx={{
           display: "flex",
           flexDirection: "column",
@@ -536,7 +549,7 @@ export default function GlamBotPage() {
 
           <Chip
             icon={<SparklesIcon size={14} color="#ec4899" />}
-            label={`Lượt quay: ${recordedVideos.length}/3`}
+            label="GlamBot 6s Slow-Mo"
             sx={{
               backgroundColor: "rgba(236, 72, 153, 0.12)",
               color: "#ec4899",
@@ -548,553 +561,295 @@ export default function GlamBotPage() {
           />
         </Box>
 
-        {/* Khung Camera Dọc 9:16 Max Height 480px Centered */}
-        <Paper
-          id="glambot-camera-card"
-          elevation={0}
-          sx={{
-            position: "relative",
-            width: "100%",
-            maxWidth: "270px", // 9:16 tương ứng 270x480
-            height: "480px",
-            maxHeight: "480px",
-            aspectRatio: "9/16",
-            borderRadius: "28px",
-            overflow: "hidden",
-            backgroundColor: "#000000",
-            border: "3px solid rgba(255, 255, 255, 0.8)",
-            boxShadow: isRecording
-              ? "0 0 35px rgba(236, 72, 153, 0.6), 0 12px 40px rgba(0, 0, 0, 0.3)"
-              : "0 16px 45px rgba(236, 72, 153, 0.15), 0 10px 30px rgba(0, 0, 0, 0.1)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            mx: "auto",
-            mb: 3,
-            transition: "all 0.3s ease",
-          }}
-        >
-          {cameraError ? (
-            <Box sx={{ p: 3, textAlign: "center", color: "#ffffff" }}>
-              <AlertCircleIcon size={40} color="#f43f5e" style={{ margin: "0 auto 12px" }} />
-              <Typography variant="body2" sx={{ mb: 2, fontSize: "0.85rem" }}>
-                {cameraError}
-              </Typography>
-              <Button
-                size="small"
-                variant="contained"
-                onClick={startCamera}
-                startIcon={<RotateCcwIcon size={16} />}
-                sx={{
-                  backgroundColor: "#ec4899",
-                  borderRadius: "100px",
-                  fontSize: "0.8rem",
-                  "&:hover": { backgroundColor: "#db2777" },
-                }}
-              >
-                Thử lại
-              </Button>
-            </Box>
-          ) : (
-            <>
-              {/* Video Live Stream từ Camera */}
-              <video
-                ref={videoLiveRef}
-                autoPlay
-                playsInline
-                muted
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
-                  transform: "scaleX(-1)", // Mirror effect cho camera trước
-                }}
-              />
-
-              {/* Tag Trạng thái quay trên góc camera */}
-              <Box
-                sx={{
-                  position: "absolute",
-                  top: 14,
-                  left: 14,
-                  right: 14,
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  zIndex: 10,
-                }}
-              >
-                {isRecording ? (
-                  <Box
+        {/* FLOW 1: Camera Preview & Recording (Khi chưa có recordedBlob) */}
+        {!recordedBlob && (
+          <>
+            {/* Khung Camera Dọc 9:16 Max Height 480px Centered */}
+            <Paper
+              id="glambot-camera-card"
+              elevation={0}
+              sx={{
+                position: "relative",
+                width: "100%",
+                maxWidth: "270px", // 9:16 tương ứng 270x480
+                height: "480px",
+                maxHeight: "480px",
+                aspectRatio: "9/16",
+                borderRadius: "28px",
+                overflow: "hidden",
+                backgroundColor: "#000000",
+                border: "3px solid rgba(255, 255, 255, 0.8)",
+                boxShadow: isRecording
+                  ? "0 0 35px rgba(236, 72, 153, 0.6), 0 12px 40px rgba(0, 0, 0, 0.3)"
+                  : "0 16px 45px rgba(236, 72, 153, 0.15), 0 10px 30px rgba(0, 0, 0, 0.1)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                mx: "auto",
+                mb: 3,
+                transition: "all 0.3s ease",
+              }}
+            >
+              {cameraError ? (
+                <Box sx={{ p: 3, textAlign: "center", color: "#ffffff" }}>
+                  <AlertCircleIcon size={40} color="#f43f5e" style={{ margin: "0 auto 12px" }} />
+                  <Typography variant="body2" sx={{ mb: 2, fontSize: "0.85rem" }}>
+                    {cameraError}
+                  </Typography>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    onClick={startCamera}
+                    startIcon={<RotateCcwIcon size={16} />}
                     sx={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 1,
-                      backgroundColor: "rgba(220, 38, 38, 0.85)",
-                      color: "#ffffff",
-                      px: 1.5,
-                      py: 0.5,
+                      backgroundColor: "#ec4899",
                       borderRadius: "100px",
-                      backdropFilter: "blur(8px)",
                       fontSize: "0.8rem",
-                      fontWeight: 700,
+                      "&:hover": { backgroundColor: "#db2777" },
                     }}
                   >
-                    <Box
-                      sx={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: "50%",
-                        backgroundColor: "#ffffff",
-                        animation: "pulse 1s infinite",
-                        "@keyframes pulse": {
-                          "0%": { opacity: 1 },
-                          "50%": { opacity: 0.3 },
-                          "100%": { opacity: 1 },
-                        },
-                      }}
-                    />
-                    REC 00:{recordingSeconds < 10 ? `0${recordingSeconds}` : recordingSeconds} / 00:10
-                  </Box>
-                ) : (
-                  <Box
-                    sx={{
-                      backgroundColor: "rgba(0, 0, 0, 0.45)",
-                      color: "#ffffff",
-                      px: 1.5,
-                      py: 0.5,
-                      borderRadius: "100px",
-                      backdropFilter: "blur(8px)",
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                    }}
-                  >
-                    GlamBot 9:16
-                  </Box>
-                )}
-
-                <Box
-                  sx={{
-                    backgroundColor: "rgba(0, 0, 0, 0.45)",
-                    color: "#ffffff",
-                    px: 1.2,
-                    py: 0.5,
-                    borderRadius: "100px",
-                    fontSize: "0.75rem",
-                    fontWeight: 600,
-                  }}
-                >
-                  HD 1080p
+                    Thử lại
+                  </Button>
                 </Box>
-              </Box>
-
-              {/* Progress bar thời gian quay 10s */}
-              {isRecording && (
-                <Box sx={{ position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 10 }}>
-                  <LinearProgress
-                    variant="determinate"
-                    value={(recordingSeconds / 10) * 100}
-                    sx={{
-                      height: 5,
-                      backgroundColor: "rgba(255,255,255,0.2)",
-                      "& .MuiLinearProgress-bar": {
-                        backgroundColor: "#ec4899",
-                      },
+              ) : (
+                <>
+                  {/* Video Live Stream từ Camera */}
+                  <video
+                    ref={videoLiveRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      transform: "scaleX(-1)", // Mirror effect cho camera trước
                     }}
                   />
-                </Box>
-              )}
 
-              {/* Overlay Đếm ngược 3...2...1 (Large 80px White Text + Motion Pulse Animation) */}
-              <AnimatePresence>
-                {isCountingDown && (
+                  {/* Tag Trạng thái quay trên góc camera */}
                   <Box
                     sx={{
                       position: "absolute",
-                      inset: 0,
-                      backgroundColor: "rgba(0, 0, 0, 0.55)",
-                      backdropFilter: "blur(4px)",
+                      top: 14,
+                      left: 14,
+                      right: 14,
                       display: "flex",
-                      flexDirection: "column",
+                      justifyContent: "space-between",
                       alignItems: "center",
-                      justifyContent: "center",
-                      zIndex: 20,
+                      zIndex: 10,
                     }}
                   >
-                    <motion.div
-                      key={countdownValue}
-                      initial={{ scale: 0.3, opacity: 0 }}
-                      animate={{ scale: 1.2, opacity: 1 }}
-                      exit={{ scale: 1.8, opacity: 0 }}
-                      transition={{ duration: 0.6, ease: "easeOut" }}
-                    >
-                      <Typography
+                    {isRecording ? (
+                      <Box
                         sx={{
-                          fontSize: "80px",
-                          fontWeight: 900,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 1,
+                          backgroundColor: "rgba(220, 38, 38, 0.85)",
                           color: "#ffffff",
-                          fontFamily: "'Quicksand', sans-serif",
-                          textShadow: "0 0 30px rgba(236, 72, 153, 0.9)",
-                          lineHeight: 1,
+                          px: 1.5,
+                          py: 0.5,
+                          borderRadius: "100px",
+                          backdropFilter: "blur(8px)",
+                          fontSize: "0.8rem",
+                          fontWeight: 700,
                         }}
                       >
-                        {countdownValue}
-                      </Typography>
-                    </motion.div>
-                    <Typography
-                      sx={{
-                        color: "rgba(255, 255, 255, 0.8)",
-                        fontSize: "0.95rem",
-                        fontWeight: 600,
-                        mt: 2,
-                        fontFamily: "'Quicksand', sans-serif",
-                      }}
-                    >
-                      Chuẩn bị tạo dáng...
-                    </Typography>
-                  </Box>
-                )}
-              </AnimatePresence>
-            </>
-          )}
-        </Paper>
+                        <Box
+                          sx={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: "50%",
+                            backgroundColor: "#ffffff",
+                            animation: "pulse 1s infinite",
+                            "@keyframes pulse": {
+                              "0%": { opacity: 1 },
+                              "50%": { opacity: 0.3 },
+                              "100%": { opacity: 1 },
+                            },
+                          }}
+                        />
+                        REC 00:{recordingSeconds < 10 ? `0${recordingSeconds}` : recordingSeconds} / 00:06
+                      </Box>
+                    ) : (
+                      <Box
+                        sx={{
+                          backgroundColor: "rgba(0, 0, 0, 0.45)",
+                          color: "#ffffff",
+                          px: 1.5,
+                          py: 0.5,
+                          borderRadius: "100px",
+                          backdropFilter: "blur(8px)",
+                          fontSize: "0.75rem",
+                          fontWeight: 600,
+                        }}
+                      >
+                        GlamBot 9:16
+                      </Box>
+                    )}
 
-        {/* Nút Điều khiển Camera (Start / Stop Recording) */}
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 4 }}>
-          {isRecording ? (
-            <Button
-              id="btn-stop-recording"
-              variant="contained"
-              onClick={stopRecording}
-              startIcon={<SquareIcon size={20} fill="#ffffff" />}
-              sx={{
-                py: 1.4,
-                px: 4,
-                borderRadius: "100px",
-                backgroundColor: "#ef4444",
-                color: "#ffffff",
-                fontWeight: 700,
-                fontSize: "1rem",
-                fontFamily: "'Quicksand', sans-serif",
-                textTransform: "none",
-                boxShadow: "0 8px 24px rgba(239, 68, 68, 0.4)",
-                "&:hover": {
-                  backgroundColor: "#dc2626",
-                },
-              }}
-            >
-              Dừng quay ({10 - recordingSeconds}s)
-            </Button>
-          ) : (
-            <Button
-              id="btn-start-recording"
-              variant="contained"
-              disabled={isCountingDown || recordedVideos.length >= 3 || !cameraReady}
-              onClick={handleStartCountdown}
-              startIcon={<VideoIcon size={22} />}
-              sx={{
-                py: 1.4,
-                px: 4.5,
-                borderRadius: "100px",
-                backgroundColor: "#ec4899",
-                color: "#ffffff",
-                fontWeight: 700,
-                fontSize: "1.05rem",
-                fontFamily: "'Quicksand', sans-serif",
-                textTransform: "none",
-                boxShadow: "0 8px 24px rgba(236, 72, 153, 0.35)",
-                "&:hover": {
-                  backgroundColor: "#db2777",
-                  boxShadow: "0 10px 28px rgba(236, 72, 153, 0.45)",
-                },
-                "&.Mui-disabled": {
-                  backgroundColor: "rgba(236, 72, 153, 0.4)",
-                  color: "#ffffff",
-                },
-              }}
-            >
-              {recordedVideos.length >= 3 ? "Đã đạt tối đa 3 lần quay" : "Bắt đầu quay"}
-            </Button>
-          )}
-
-          {recordedVideos.length > 0 && !isRecording && (
-            <Tooltip title="Làm mới để quay lại từ đầu">
-              <IconButton
-                onClick={handleResetAttempts}
-                sx={{
-                  backgroundColor: "rgba(255, 255, 255, 0.7)",
-                  backdropFilter: "blur(8px)",
-                  border: "1px solid rgba(236, 72, 153, 0.25)",
-                  color: "#ec4899",
-                  p: 1.2,
-                  "&:hover": {
-                    backgroundColor: "rgba(236, 72, 153, 0.15)",
-                  },
-                }}
-              >
-                <RotateCcwIcon size={20} />
-              </IconButton>
-            </Tooltip>
-          )}
-        </Box>
-
-        {/* Danh sách các video đã quay (Tối đa 3 thumbnails nằm ngang) */}
-        {recordedVideos.length > 0 && (
-          <Box
-            sx={{
-              width: "100%",
-              maxWidth: "540px",
-              background: "rgba(255, 255, 255, 0.55)",
-              backdropFilter: "blur(16px)",
-              WebkitBackdropFilter: "blur(16px)",
-              border: "1px solid rgba(255, 255, 255, 0.7)",
-              borderRadius: "24px",
-              p: { xs: 2, sm: 3 },
-              boxShadow: "0 8px 32px 0 rgba(31, 38, 135, 0.08)",
-              mb: 3,
-            }}
-          >
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                mb: 2,
-              }}
-            >
-              <Typography
-                variant="subtitle1"
-                sx={{
-                  fontWeight: 700,
-                  fontFamily: "'Quicksand', sans-serif",
-                  color: "#1f2937",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 1,
-                }}
-              >
-                <FilmIcon size={18} color="#ec4899" />
-                Chọn video ưng ý nhất ({recordedVideos.length}/3)
-              </Typography>
-
-              {selectedVideoIndex !== null && (
-                <Typography variant="caption" sx={{ color: "#ec4899", fontWeight: 700 }}>
-                  Đang chọn: Video #{selectedVideoIndex + 1}
-                </Typography>
-              )}
-            </Box>
-
-            {/* Horizontal Grid Thumbnails */}
-            <Box
-              sx={{
-                display: "grid",
-                gridTemplateColumns: "repeat(3, 1fr)",
-                gap: { xs: 1.5, sm: 2 },
-              }}
-            >
-              {recordedVideos.map((video, index) => {
-                const isSelected = selectedVideoIndex === index;
-                const isSaved = savedSuccessIndex === index;
-
-                return (
-                  <Box
-                    key={video.id}
-                    id={`video-thumb-${index}`}
-                    onClick={() => handleSelectVideo(index)}
-                    sx={{
-                      position: "relative",
-                      aspectRatio: "9/16",
-                      borderRadius: "16px",
-                      overflow: "hidden",
-                      cursor: "pointer",
-                      backgroundColor: "#000000",
-                      border: isSelected
-                        ? "3px solid #ec4899"
-                        : "2px solid rgba(255, 255, 255, 0.8)",
-                      boxShadow: isSelected
-                        ? "0 0 20px rgba(236, 72, 153, 0.45)"
-                        : "0 4px 12px rgba(0, 0, 0, 0.08)",
-                      transform: isSelected ? "scale(1.03)" : "scale(1)",
-                      transition: "all 0.25s ease",
-                      "&:hover": {
-                        transform: "scale(1.03)",
-                        borderColor: isSelected ? "#ec4899" : "rgba(236, 72, 153, 0.5)",
-                      },
-                    }}
-                  >
-                    <video
-                      src={video.url}
-                      muted
-                      loop
-                      autoPlay
-                      playsInline
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                      }}
-                    />
-
-                    {/* Tag số thứ tự */}
                     <Box
                       sx={{
-                        position: "absolute",
-                        top: 8,
-                        left: 8,
-                        backgroundColor: isSelected
-                          ? "#ec4899"
-                          : "rgba(0, 0, 0, 0.6)",
+                        backgroundColor: "rgba(0, 0, 0, 0.45)",
                         color: "#ffffff",
+                        px: 1.2,
+                        py: 0.5,
                         borderRadius: "100px",
-                        px: 1,
-                        py: 0.2,
-                        fontSize: "0.7rem",
-                        fontWeight: 700,
-                        backdropFilter: "blur(4px)",
+                        fontSize: "0.75rem",
+                        fontWeight: 600,
                       }}
                     >
-                      #{index + 1}
+                      HD 1080p
                     </Box>
+                  </Box>
 
-                    {/* Badge đã lưu */}
-                    {isSaved && (
+                  {/* Progress bar thời gian quay 6s */}
+                  {isRecording && (
+                    <Box sx={{ position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 10 }}>
+                      <LinearProgress
+                        variant="determinate"
+                        value={(recordingSeconds / 6) * 100}
+                        sx={{
+                          height: 5,
+                          backgroundColor: "rgba(255,255,255,0.2)",
+                          "& .MuiLinearProgress-bar": {
+                            backgroundColor: "#ec4899",
+                          },
+                        }}
+                      />
+                    </Box>
+                  )}
+
+                  {/* Overlay Đếm ngược 3...2...1 */}
+                  <AnimatePresence>
+                    {countdown !== null && (
                       <Box
                         sx={{
                           position: "absolute",
-                          bottom: 8,
-                          right: 8,
-                          backgroundColor: "#10b981",
-                          color: "#ffffff",
-                          borderRadius: "50%",
-                          p: 0.4,
+                          inset: 0,
+                          backgroundColor: "rgba(0, 0, 0, 0.55)",
+                          backdropFilter: "blur(4px)",
                           display: "flex",
+                          flexDirection: "column",
                           alignItems: "center",
                           justifyContent: "center",
+                          zIndex: 20,
                         }}
                       >
-                        <CheckCircle2Icon size={14} />
+                        <motion.div
+                          key={countdown}
+                          initial={{ scale: 0.3, opacity: 0 }}
+                          animate={{ scale: 1.2, opacity: 1 }}
+                          exit={{ scale: 1.8, opacity: 0 }}
+                          transition={{ duration: 0.6, ease: "easeOut" }}
+                        >
+                          <Typography
+                            sx={{
+                              fontSize: "80px",
+                              fontWeight: 900,
+                              color: "#ffffff",
+                              fontFamily: "'Quicksand', sans-serif",
+                              textShadow: "0 0 30px rgba(236, 72, 153, 0.9)",
+                              lineHeight: 1,
+                            }}
+                          >
+                            {countdown}
+                          </Typography>
+                        </motion.div>
+                        <Typography
+                          sx={{
+                            color: "rgba(255, 255, 255, 0.8)",
+                            fontSize: "0.95rem",
+                            fontWeight: 600,
+                            mt: 2,
+                            fontFamily: "'Quicksand', sans-serif",
+                          }}
+                        >
+                          Chuẩn bị tạo dáng...
+                        </Typography>
                       </Box>
                     )}
-                  </Box>
-                );
-              })}
-            </Box>
+                  </AnimatePresence>
+                </>
+              )}
+            </Paper>
 
-            {/* Các Nút Thao Tác: Không lưu, Lưu video gốc & Lưu GlamBot Video */}
-            {selectedVideoIndex !== null && (
-              <Box
-                sx={{
-                  mt: 3,
-                  display: "flex",
-                  flexDirection: { xs: "column", sm: "row" },
-                  gap: 1.5,
-                  alignItems: "center",
-                }}
-              >
+            {/* Nút Điều khiển Camera (Bắt đầu quay / Dừng quay) */}
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 4 }}>
+              {isRecording ? (
                 <Button
-                  id="btn-discard-video"
-                  variant="outlined"
-                  color="error"
-                  fullWidth
-                  disabled={isSaving}
-                  onClick={handleDiscardVideo}
-                  startIcon={<Trash2Icon size={18} />}
+                  id="btn-stop-recording"
+                  variant="contained"
+                  onClick={stopRecording}
+                  startIcon={<SquareIcon size={20} fill="#ffffff" />}
                   sx={{
-                    py: 1.2,
+                    py: 1.4,
+                    px: 4,
                     borderRadius: "100px",
+                    backgroundColor: "#ef4444",
+                    color: "#ffffff",
                     fontWeight: 700,
-                    fontSize: "0.9rem",
+                    fontSize: "1rem",
                     fontFamily: "'Quicksand', sans-serif",
                     textTransform: "none",
-                  }}
-                >
-                  Không lưu
-                </Button>
-
-                <Button
-                  id="btn-save-original-video"
-                  variant="outlined"
-                  fullWidth
-                  disabled={isSaving}
-                  onClick={handleSaveOriginalVideo}
-                  startIcon={
-                    isSaving && savingType === "original" ? (
-                      <CircularProgress size={18} color="inherit" />
-                    ) : (
-                      <UploadIcon size={18} />
-                    )
-                  }
-                  sx={{
-                    py: 1.2,
-                    borderRadius: "100px",
-                    borderColor: "#ec4899",
-                    color: "#ec4899",
-                    fontWeight: 700,
-                    fontSize: "0.9rem",
-                    fontFamily: "'Quicksand', sans-serif",
-                    textTransform: "none",
+                    boxShadow: "0 8px 24px rgba(239, 68, 68, 0.4)",
                     "&:hover": {
-                      borderColor: "#db2777",
-                      backgroundColor: "rgba(236, 72, 153, 0.08)",
+                      backgroundColor: "#dc2626",
                     },
                   }}
                 >
-                  {isSaving && savingType === "original"
-                    ? "Đang lưu video gốc..."
-                    : "Lưu video gốc"}
+                  Dừng quay ({6 - recordingSeconds}s)
                 </Button>
-
+              ) : (
                 <Button
-                  id="btn-save-glambot-video"
+                  id="btn-start-recording"
                   variant="contained"
-                  fullWidth
-                  disabled={isSaving}
-                  onClick={() => {
-                    const exportBtn = document.getElementById("btn-export-glambot-video");
-                    if (exportBtn) {
-                      exportBtn.click();
-                    } else {
-                      handleSaveOriginalVideo();
-                    }
-                  }}
-                  startIcon={
-                    isSaving && savingType === "glambot" ? (
-                      <CircularProgress size={18} color="inherit" />
-                    ) : (
-                      <SparklesIcon size={18} />
-                    )
-                  }
+                  disabled={countdown !== null || !cameraReady}
+                  onClick={handleStartCountdown}
+                  startIcon={<VideoIcon size={22} />}
                   sx={{
-                    py: 1.2,
+                    py: 1.4,
+                    px: 4.5,
                     borderRadius: "100px",
                     backgroundColor: "#ec4899",
                     color: "#ffffff",
                     fontWeight: 700,
-                    fontSize: "0.9rem",
+                    fontSize: "1.05rem",
                     fontFamily: "'Quicksand', sans-serif",
                     textTransform: "none",
-                    boxShadow: "0 6px 20px rgba(236, 72, 153, 0.35)",
+                    boxShadow: "0 8px 24px rgba(236, 72, 153, 0.35)",
                     "&:hover": {
                       backgroundColor: "#db2777",
-                      boxShadow: "0 8px 25px rgba(236, 72, 153, 0.45)",
+                      boxShadow: "0 10px 28px rgba(236, 72, 153, 0.45)",
+                    },
+                    "&.Mui-disabled": {
+                      backgroundColor: "rgba(236, 72, 153, 0.4)",
+                      color: "#ffffff",
                     },
                   }}
                 >
-                  {isSaving && savingType === "glambot"
-                    ? "Đang tải GlamBot..."
-                    : "Lưu GlamBot Video"}
+                  Bắt đầu quay
                 </Button>
-              </Box>
-            )}
-          </Box>
+              )}
+            </Box>
+          </>
         )}
 
-        {/* Hiệu ứng GlamBot Cinematic Canvas Preview & Export Component */}
-        {currentSelectedVideo && (
+        {/* FLOW 2: GlamBot Preview & Save Screen Sau khi đã quay xong video */}
+        {recordedBlob && (
           <GlamBotEffect
-            key={currentSelectedVideo.id}
-            videoBlob={currentSelectedVideo.blob}
+            ref={glamBotRef}
+            videoBlob={recordedBlob}
+            onBack={() => {
+              setRecordedBlob(null);
+              setIsPlayingPreview(false);
+            }}
+            onSaveOriginal={handleSaveOriginalVideo}
+            onSaveGlamBot={handleTriggerSaveGlamBot}
             onExportComplete={handleGlamBotExportComplete}
+            isSaving={isSaving}
+            savingType={savingType}
           />
         )}
       </Container>
