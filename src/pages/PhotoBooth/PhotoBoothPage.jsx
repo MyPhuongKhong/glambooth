@@ -101,10 +101,10 @@ const drawComposite = (ctx, layout, color, stickerList, slotImages = []) => {
   const cells = getCells(layout);
 
   // 1. Clip to rounded rect
-  ctx.save();
-  ctx.beginPath();
-  ctx.roundRect(0, 0, W, H, RADIUS);
-  ctx.clip();
+  // ctx.save();
+  // ctx.beginPath();
+  // ctx.roundRect(0, 0, W, H, RADIUS);
+  // ctx.clip();
 
   // 2. Fill background with frame color
   ctx.fillStyle = color;
@@ -135,11 +135,11 @@ const drawComposite = (ctx, layout, color, stickerList, slotImages = []) => {
   ctx.restore(); // end rounded clip
 
   // 5. Draw border ring (outside clip so corners are clean)
-  ctx.beginPath();
-  ctx.roundRect(1, 1, W - 2, H - 2, RADIUS);
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 4;
-  ctx.stroke();
+  // ctx.beginPath();
+  // ctx.roundRect(1, 1, W - 2, H - 2, RADIUS);
+  // ctx.strokeStyle = color;
+  // ctx.lineWidth = 4;
+  // ctx.stroke();
 };
 
 export default function PhotoBoothPage() {
@@ -717,33 +717,28 @@ export default function PhotoBoothPage() {
           {/* Main Content */}
           <Box
             sx={{
-              display: "flex",
+              display: 'flex',
               flex: 1,
               minHeight: 0,
               gap: 2,
-              px: 3,
+              px: { xs: 2, md: 3 },
               pb: 2,
-              flexDirection: { xs: "column", md: "row" },
-              overflow: { xs: "auto", md: "hidden" },
+              flexDirection: { xs: 'column', md: 'row' },
             }}
           >
             {/* LEFT: Preview Canvas */}
             <Paper
-              elevation={0}
+              elevation={2}
               sx={{
-                flex: 1,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+                // Mobile: fixed height so it doesn't collapse
+                height: { xs: 280, md: 'auto' },
+                minHeight: { xs: 280, md: 0 },
+                flex: { xs: 'none', md: 1 },
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
                 p: 2,
-                minHeight: 0,
-                overflow: "hidden",
-                borderRadius: "24px",
-                background: "rgba(255, 255, 255, 0.75)",
-                backdropFilter: "blur(16px)",
-                WebkitBackdropFilter: "blur(16px)",
-                border: "1px solid rgba(236, 72, 153, 0.25)",
-                boxShadow: "0 8px 30px rgba(236, 72, 153, 0.08)",
+                overflow: 'hidden',
               }}
             >
               <canvas
@@ -751,40 +746,37 @@ export default function PhotoBoothPage() {
                 ref={previewCanvasRef}
                 width={selectedLayout.W}
                 height={selectedLayout.H}
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  // borderRadius: 16,
+                  cursor: 'grab',
+                  // On mobile: constrain to fit in 280px container
+                  height: 'auto',
+                  objectFit: 'contain',
+                }}
                 onMouseDown={handleStickerMouseDown}
                 onMouseMove={handleStickerMouseMove}
                 onMouseUp={handleStickerMouseUp}
                 onTouchStart={handleStickerTouchStart}
                 onTouchMove={handleStickerTouchMove}
                 onTouchEnd={handleStickerTouchEnd}
-                style={{
-                  maxWidth: "100%",
-                  maxHeight: "100%",
-                  borderRadius: 24,
-                  cursor: "grab",
-                  boxShadow: "0 12px 36px rgba(0, 0, 0, 0.2)",
-                  display: "block",
-                }}
               />
             </Paper>
 
             {/* RIGHT: Controls */}
             <Paper
-              elevation={0}
+              elevation={2}
               sx={{
-                width: { xs: "100%", md: 300 },
+                width: { xs: '100%', md: 300 },
+                flex: { xs: 1, md: 'none' }, // flex:1 on mobile so it fills remaining space
+                minHeight: 0,
                 flexShrink: 0,
-                p: 2.5,
-                display: "flex",
-                flexDirection: "column",
+                p: 2,
+                display: 'flex',
+                flexDirection: 'column',
                 gap: 2,
-                overflowY: "auto",
-                borderRadius: "24px",
-                background: "rgba(255, 255, 255, 0.8)",
-                backdropFilter: "blur(16px)",
-                WebkitBackdropFilter: "blur(16px)",
-                border: "1px solid rgba(236, 72, 153, 0.25)",
-                boxShadow: "0 8px 30px rgba(236, 72, 153, 0.08)",
+                overflowY: 'auto', // scrollable controls on mobile
               }}
             >
               {/* Layout Picker */}
@@ -1034,7 +1026,7 @@ export default function PhotoBoothPage() {
               style={{
                 maxHeight: "100%",
                 maxWidth: "100%",
-                borderRadius: 24,
+                // borderRadius:  16,
                 boxShadow: "0 16px 45px rgba(0, 0, 0, 0.25)",
                 display: "block",
               }}
@@ -1049,7 +1041,7 @@ export default function PhotoBoothPage() {
               sx={{
                 width: "100%",
                 height: 8,
-                borderRadius: 4,
+                // borderRadius: 16, 
                 backgroundColor: "rgba(236, 72, 153, 0.2)",
                 "& .MuiLinearProgress-bar": { backgroundColor: "#ec4899" },
               }}
@@ -1107,7 +1099,7 @@ export default function PhotoBoothPage() {
               style={{
                 maxHeight: "100%",
                 maxWidth: "100%",
-                borderRadius: 24,
+                // borderRadius: 16,
                 boxShadow: "0 16px 45px rgba(0, 0, 0, 0.25)",
                 display: "block",
               }}
@@ -1207,7 +1199,7 @@ export default function PhotoBoothPage() {
               backgroundColor: '#ffffff !important',
               backgroundImage: 'none',
               opacity: 1,
-              borderRadius: '24px',
+              // borderRadius: '16px',
               padding: '16px',
               boxShadow: '0 16px 40px rgba(236, 72, 153, 0.25)',
             },
@@ -1235,8 +1227,8 @@ export default function PhotoBoothPage() {
           {savedUrl && (
             <Box
               sx={{
-                borderRadius: "14px",
-                // overflow: "hidden",
+                // borderRadius: "16px",
+                overflow: "hidden",
                 boxShadow: "0 8px 24px rgba(0,0,0,0.2)",
                 lineHeight: 0,
               }}
