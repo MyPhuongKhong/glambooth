@@ -67,17 +67,17 @@ const initParticles = (type) => {
       type === 'confetti'
         ? Math.random() * 3 + 1
         : type === 'hearts'
-        ? -Math.random() * 2 - 0.5
-        : (Math.random() - 0.5) * 0.3,
+          ? -Math.random() * 2 - 0.5
+          : (Math.random() - 0.5) * 0.3,
     size: Math.random() * 10 + 5,
     color:
       type === 'confetti'
         ? ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8'][
-            Math.floor(Math.random() * 5)
-          ]
+        Math.floor(Math.random() * 5)
+        ]
         : type === 'hearts'
-        ? '#FF69B4'
-        : '#ffffff',
+          ? '#FF69B4'
+          : '#ffffff',
     opacity: Math.random() * 0.8 + 0.2,
     rotation: Math.random() * Math.PI * 2,
     rotSpeed: (Math.random() - 0.5) * 0.1,
@@ -172,17 +172,22 @@ export default function GestureBoothPage() {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
 
-    // ✅ Chụp TRƯỚC khi vẽ flash
-    const blob = await new Promise(res =>
-      canvas.toBlob(res, 'image/jpeg', 0.92)
-    );
+    // ✅ THAY: copy sang offscreen ĐỒNG BỘ trước khi RAF đụng vào
+    const offscreen = document.createElement('canvas');
+    offscreen.width = CANVAS_W;
+    offscreen.height = CANVAS_H;
+    offscreen.getContext('2d').drawImage(canvas, 0, 0); // sync, không async
 
-    // Flash effect SAU khi đã chụp xong
+    // Flash effect trên canvas chính
     ctx.fillStyle = 'rgba(255,255,255,0.8)';
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
     setIsUploading(true);
     try {
+      // ✅ THAY: toBlob từ offscreen thay vì canvas chính
+      const blob = await new Promise(res =>
+        offscreen.toBlob(res, 'image/jpeg', 0.92)
+      );
       const file = new File(
         [blob],
         `gesture-${Date.now()}.jpg`,
@@ -263,18 +268,6 @@ export default function GestureBoothPage() {
           }
         }
 
-        // 3. Hold progress + auto-capture
-        if (detectedGesture && holdStartRef.current && !isCapturingRef.current) {
-          const elapsed = Date.now() - holdStartRef.current;
-          const progress = Math.min((elapsed / HOLD_DURATION) * 100, 100);
-          setHoldProgress(progress);
-          if (progress >= 100) {
-            holdStartRef.current = null;
-            isCapturingRef.current = true;
-            triggerCapture(detectedGesture);
-          }
-        }
-
         // 4. Draw background
         if (detectedGesture) {
           const bgImg = bgImagesRef.current[detectedGesture];
@@ -314,6 +307,18 @@ export default function GestureBoothPage() {
         ctx.scale(-1, 1);
         ctx.drawImage(video, 0, 0, CANVAS_W, CANVAS_H);
         ctx.restore();
+
+        // 3. Hold progress + auto-capture
+        if (detectedGesture && holdStartRef.current && !isCapturingRef.current) {
+          const elapsed = Date.now() - holdStartRef.current;
+          const progress = Math.min((elapsed / HOLD_DURATION) * 100, 100);
+          setHoldProgress(progress);
+          if (progress >= 100) {
+            holdStartRef.current = null;
+            isCapturingRef.current = true;
+            triggerCapture(detectedGesture); // Lúc này canvas đã có hình ảnh để copy!
+          }
+        }
 
         // 6. HUD overlay
         if (detectedGesture) {
