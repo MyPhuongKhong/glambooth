@@ -12,6 +12,7 @@ import HomePage from "./pages/Home/HomePage";
 import LoginPage from "./pages/Auth/LoginPage";
 import RegisterPage from "./pages/Auth/RegisterPage";
 import GlamBotPage from "./pages/GlamBot/GlamBotPage";
+import PhotoBoothPage from "./pages/PhotoBooth/PhotoBoothPage";
 
 // Placeholder component cho các module tiếp theo
 function PlaceholderModule({ title, icon, subtitle, color, chipText }) {
@@ -287,13 +288,9 @@ export default function App() {
           <Route
             path="/photobooth"
             element={
-              <PlaceholderModule
-                title="Photo Booth"
-                icon="📸"
-                subtitle="Chụp ảnh 4 khung hình Hàn Quốc và dán sticker đáng yêu sắp hoàn thiện."
-                color="#a855f7"
-                chipText="Module 2"
-              />
+              <ProtectedRoute>
+                <PhotoBoothPage />
+              </ProtectedRoute>
             }
           />
           <Route
