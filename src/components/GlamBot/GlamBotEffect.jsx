@@ -11,7 +11,6 @@ import {
   Box,
   Typography,
   Paper,
-  Alert,
   CircularProgress,
   LinearProgress,
   Chip,
@@ -20,12 +19,10 @@ import {
 } from "@mui/material";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import PauseIcon from "@mui/icons-material/Pause";
-import {
-  Sparkles as SparklesIcon,
-  RotateCcw as RotateCcwIcon,
-  Upload as UploadIcon,
-  Film as FilmIcon,
-} from "lucide-react";
+import ReplayIcon from "@mui/icons-material/Replay";
+import FileUploadIcon from "@mui/icons-material/FileUpload";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import MovieIcon from "@mui/icons-material/Movie";
 import toast from "react-hot-toast";
 
 // Ease-in-out interpolation: smooth transitions across keyframe boundaries
@@ -40,7 +37,7 @@ function easeIn(t) {
   return clamped * clamped;
 }
 
-// 6-second cinematic GlamBot camera timeline transforms (based on source timeline 0..6s)
+// 6-second cinematic GlamBot camera timeline transforms (0..6s)
 function getTransformAtTime(timeInSeconds) {
   const t = Math.max(0, Math.min(6, timeInSeconds));
 
@@ -50,26 +47,26 @@ function getTransformAtTime(timeInSeconds) {
   let scaleOscillation = 0;
 
   if (t < 1.5) {
-    // Phase 0–1.5s: "Opening move" (duration 1.5s)
+    // Phase 0–1.5s: "Opening move"
     start = { scale: 1.0, panX: 0, panY: 0, rot: 0 };
     end = { scale: 1.2, panX: 0.07, panY: -0.03, rot: 0.8 };
     const localProgress = Math.max(0, Math.min(1, (t - 0) / 1.5));
     progress = easeInOut(localProgress);
   } else if (t < 4) {
-    // Phase 1.5–4s: "Slow drama hold" (2.5s duration) - matches slow-mo peak!
+    // Phase 1.5–4s: "Slow drama hold" (matches slow-mo peak)
     start = { scale: 1.2, panX: 0.07, panY: -0.03, rot: 0.8 };
     end = { scale: 1.28, panX: 0.11, panY: -0.05, rot: 1.5 };
     const localProgress = Math.max(0, Math.min(1, (t - 1.5) / 2.5));
     progress = localProgress;
     scaleOscillation = Math.sin(localProgress * Math.PI * 2) * 0.015;
   } else if (t < 4.7) {
-    // Phase 4–4.7s: "Fast sweep" (0.7s duration)
+    // Phase 4–4.7s: "Fast sweep"
     start = { scale: 1.28, panX: 0.11, panY: -0.05, rot: 1.5 };
     end = { scale: 1.3, panX: -0.07, panY: 0.02, rot: -1.2 };
     const localProgress = Math.max(0, Math.min(1, (t - 4) / 0.7));
     progress = easeIn(localProgress);
   } else {
-    // Phase 4.7–6s: "Pull back" (duration 1.3s)
+    // Phase 4.7–6s: "Pull back"
     start = { scale: 1.3, panX: -0.07, panY: 0.02, rot: -1.2 };
     end = { scale: 1.0, panX: 0, panY: 0, rot: 0 };
     const localProgress = Math.max(0, Math.min(1, (t - 4.7) / 1.3));
@@ -112,8 +109,6 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
   },
   ref
 ) {
-  if (!videoBlob) return null;
-
   // Video and Canvas Refs
   const originalVideoRef = useRef(null);
   const glambotVideoRef = useRef(null);
@@ -125,7 +120,7 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
   // URL state
   const [videoObjectUrl, setVideoObjectUrl] = useState("");
 
-  // Independent Playback States (FIX 1)
+  // Independent Playback States
   const [isPlayingOriginal, setIsPlayingOriginal] = useState(false);
   const [isPlayingGlambot, setIsPlayingGlambot] = useState(false);
 
@@ -133,14 +128,6 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [glambotCurrentTime, setGlambotCurrentTime] = useState(0);
-  const [supportsCaptureStream, setSupportsCaptureStream] = useState(true);
-
-  // Check browser support for canvas.captureStream
-  useEffect(() => {
-    const canvas = document.createElement("canvas");
-    const supported = typeof canvas.captureStream === "function";
-    setSupportsCaptureStream(supported);
-  }, []);
 
   // Update object URL when videoBlob changes
   useEffect(() => {
@@ -237,7 +224,7 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
     animationFrameRef.current = requestAnimationFrame(loop);
   }, [renderCurrentCanvasFrame]);
 
-  // Original Video Play/Pause toggle
+  // Original Video Play/Pause toggle (Independent)
   const toggleOriginalPlay = useCallback(() => {
     const video = originalVideoRef.current;
     if (!video) return;
@@ -256,7 +243,7 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
     }
   }, [isPlayingOriginal]);
 
-  // GlamBot Canvas Video Play/Pause toggle
+  // GlamBot Canvas Video Play/Pause toggle (Independent)
   const toggleGlambotPlay = useCallback(() => {
     const video = glambotVideoRef.current;
     if (!video) return;
@@ -301,7 +288,7 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
     }
   };
 
-  // Initial load: render 1st frame to canvas so it's not black
+  // Initial load: render 1st frame to canvas
   const handleGlamBotLoadedData = () => {
     const video = glambotVideoRef.current;
     if (video) {
@@ -331,7 +318,6 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
     }
 
     try {
-      // Pause active playback
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
@@ -488,6 +474,10 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
     };
   }, []);
 
+  if (!videoBlob) {
+    return null;
+  }
+
   return (
     <Box
       id="glambot-preview-fullscreen-container"
@@ -503,7 +493,7 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
         boxSizing: "border-box",
       }}
     >
-      {/* Hidden GlamBot Video Element for frame rendering */}
+      {/* Dedicated GlamBot Video Element for frame rendering */}
       <video
         ref={glambotVideoRef}
         src={videoObjectUrl || undefined}
@@ -516,7 +506,7 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
         style={{ display: "none" }}
       />
 
-      {/* TOP: Two cards side by side — flex: 1, min-height 0 (FIX 3) */}
+      {/* TOP: Two cards side by side */}
       <Box
         sx={{
           display: "flex",
@@ -558,7 +548,7 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
             }}
           >
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <FilmIcon size={18} color="#ec4899" />
+              <MovieIcon sx={{ fontSize: 18, color: "#ec4899" }} />
               <Typography
                 variant="h6"
                 sx={{
@@ -615,7 +605,7 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
             />
           </Box>
 
-          {/* Dedicated Play/Pause Button BELOW the panel (FIX 1) */}
+          {/* Dedicated Play/Pause Button BELOW the panel */}
           <IconButton
             id="btn-play-original"
             onClick={toggleOriginalPlay}
@@ -676,7 +666,7 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
             }}
           >
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <SparklesIcon size={18} color="#ec4899" />
+              <AutoAwesomeIcon sx={{ fontSize: 18, color: "#ec4899" }} />
               <Typography
                 variant="h6"
                 sx={{
@@ -797,7 +787,7 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
             )}
           </Box>
 
-          {/* Dedicated Play/Pause Button BELOW the panel (FIX 1) */}
+          {/* Dedicated Play/Pause Button BELOW the panel */}
           <IconButton
             id="btn-play-glambot"
             disabled={isExporting}
@@ -833,14 +823,16 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
         </Paper>
       </Box>
 
-      {/* BOTTOM: Action Buttons — fixed height, does NOT push content (FIX 2 & FIX 3) */}
+      {/* BOTTOM: Action Buttons — MUI <Button> with startIcon, borderRadius 999px, whiteSpace nowrap, flexWrap wrap */}
       <Box
         sx={{
           display: "flex",
+          gap: 2,
           justifyContent: "center",
           alignItems: "center",
-          gap: { xs: 1.5, sm: 2.5 },
-          pt: 2,
+          flexWrap: "wrap", // wrap on very small screens instead of overflow
+          px: 2,
+          py: 2,
           flexShrink: 0,
         }}
       >
@@ -850,12 +842,13 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
           variant="outlined"
           color="secondary"
           disabled={isSaving || isExporting}
+          startIcon={<ReplayIcon />}
           onClick={onBack}
-          startIcon={<RotateCcwIcon size={18} />}
           sx={{
+            borderRadius: "999px",
+            px: 3,
             py: 1.1,
-            px: { xs: 2, sm: 3 },
-            borderRadius: "100px",
+            whiteSpace: "nowrap",
             fontWeight: 700,
             fontSize: "0.9rem",
             fontFamily: "'Quicksand', sans-serif",
@@ -871,18 +864,19 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
           variant="outlined"
           color="primary"
           disabled={isSaving || isExporting}
-          onClick={onSaveOriginal}
           startIcon={
             isSaving && savingType === "original" ? (
               <CircularProgress size={18} color="inherit" />
             ) : (
-              <UploadIcon size={18} />
+              <FileUploadIcon />
             )
           }
+          onClick={onSaveOriginal}
           sx={{
+            borderRadius: "999px",
+            px: 3,
             py: 1.1,
-            px: { xs: 2, sm: 3 },
-            borderRadius: "100px",
+            whiteSpace: "nowrap",
             borderColor: "#ec4899",
             color: "#ec4899",
             fontWeight: 700,
@@ -904,8 +898,14 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
         <Button
           id="btn-save-glambot-video"
           variant="contained"
-          color="primary"
           disabled={isSaving || isExporting}
+          startIcon={
+            (isSaving && savingType === "glambot") || isExporting ? (
+              <CircularProgress size={18} color="inherit" />
+            ) : (
+              <AutoAwesomeIcon />
+            )
+          }
           onClick={() => {
             if (onSaveGlamBot) {
               onSaveGlamBot();
@@ -913,18 +913,12 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
               handleExportVideo();
             }
           }}
-          startIcon={
-            (isSaving && savingType === "glambot") || isExporting ? (
-              <CircularProgress size={18} color="inherit" />
-            ) : (
-              <SparklesIcon size={18} />
-            )
-          }
           sx={{
+            borderRadius: "999px",
+            px: 3,
             py: 1.1,
-            px: { xs: 2.5, sm: 3.5 },
-            borderRadius: "100px",
-            backgroundColor: "#ec4899",
+            whiteSpace: "nowrap",
+            background: "linear-gradient(135deg, #e91e8c, #c2185b)",
             color: "#ffffff",
             fontWeight: 700,
             fontSize: "0.9rem",
@@ -932,7 +926,7 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
             textTransform: "none",
             boxShadow: "0 6px 20px rgba(236, 72, 153, 0.35)",
             "&:hover": {
-              backgroundColor: "#db2777",
+              background: "linear-gradient(135deg, #d81b60, #ad1457)",
               boxShadow: "0 8px 25px rgba(236, 72, 153, 0.45)",
             },
           }}

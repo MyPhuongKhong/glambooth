@@ -8,24 +8,14 @@ import {
   Button,
   Paper,
   Chip,
-  CircularProgress,
   LinearProgress,
-  Grid,
-  IconButton,
 } from "@mui/material";
-import PlayArrowIcon from "@mui/icons-material/PlayArrow";
-import PauseIcon from "@mui/icons-material/Pause";
-import {
-  Video as VideoIcon,
-  Square as SquareIcon,
-  RotateCcw as RotateCcwIcon,
-  Upload as UploadIcon,
-  Film as FilmIcon,
-  Sparkles as SparklesIcon,
-  ArrowLeft as ArrowLeftIcon,
-  AlertCircle as AlertCircleIcon,
-  X as XIcon,
-} from "lucide-react";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import VideocamIcon from "@mui/icons-material/Videocam";
+import StopIcon from "@mui/icons-material/Stop";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import ReplayIcon from "@mui/icons-material/Replay";
+import ErrorIcon from "@mui/icons-material/Error";
 import { motion, AnimatePresence } from "motion/react";
 import toast from "react-hot-toast";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
@@ -57,7 +47,6 @@ export default function GlamBotPage() {
 
   // Camera & Recorder References
   const videoLiveRef = useRef(null);
-  const originalVideoRef = useRef(null);
   const glamBotRef = useRef(null);
   const streamRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -74,9 +63,6 @@ export default function GlamBotPage() {
 
   // Video recording state (single recording)
   const [recordedBlob, setRecordedBlob] = useState(null);
-
-  // Preview Playback State
-  const [isPlayingPreview, setIsPlayingPreview] = useState(false);
 
   // Trạng thái lưu / upload
   const [isSaving, setIsSaving] = useState(false);
@@ -96,12 +82,13 @@ export default function GlamBotPage() {
     };
   }, [recordedVideoUrl]);
 
-  // Khởi tạo Camera
+  // Khởi tạo Camera (startCamera async function)
   const startCamera = async () => {
     try {
       setCameraError(null);
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -133,7 +120,7 @@ export default function GlamBotPage() {
     }
   };
 
-  // Dọn dẹp stream khi unmount
+  // 1. Khởi chạy Camera khi mount
   useEffect(() => {
     startCamera();
 
@@ -146,6 +133,40 @@ export default function GlamBotPage() {
       if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
     };
   }, []);
+
+  // Gắn stream khi quay lại màn hình camera (khi videoLiveRef được mount lại)
+  useEffect(() => {
+    if (!recordedBlob && streamRef.current && videoLiveRef.current) {
+      if (videoLiveRef.current.srcObject !== streamRef.current) {
+        videoLiveRef.current.srcObject = streamRef.current;
+        videoLiveRef.current.play().catch((err) => console.warn("Video live play error:", err));
+      }
+    }
+  }, [recordedBlob, cameraReady]);
+
+  // Xử lý Quay lại (handleGoBack: Reset state & Khởi động lại Camera)
+  const handleGoBack = () => {
+    if (mediaRecorderRef.current?.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+
+    // Reset all state
+    setRecordedBlob(null);
+    setCountdown(null);
+    setIsRecording(false);
+    setRecordingSeconds(0);
+
+    // Restart camera
+    startCamera();
+  };
 
   // Xử lý đếm ngược 3...2...1 trước khi bắt đầu quay
   const handleStartCountdown = () => {
@@ -163,6 +184,7 @@ export default function GlamBotPage() {
         setCountdown(count);
       } else {
         clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
         setCountdown(null);
         startRecording();
       }
@@ -189,7 +211,6 @@ export default function GlamBotPage() {
         const mime = mediaRecorder.mimeType || "video/webm";
         const blob = new Blob(recordedChunksRef.current, { type: mime });
         setRecordedBlob(blob);
-        setIsPlayingPreview(false);
 
         toast.success("Đã quay xong video 6s! ✨", {
           icon: "🎬",
@@ -226,38 +247,6 @@ export default function GlamBotPage() {
       mediaRecorderRef.current.stop();
     }
     setIsRecording(false);
-  };
-
-  // FIX 3: Điều khiển phát đồng thời cả 2 video bằng nút Play/Pause trung tâm
-  const handleTogglePlayBoth = () => {
-    if (isPlayingPreview) {
-      // Tạm dừng cả 2 video
-      if (originalVideoRef.current) {
-        originalVideoRef.current.pause();
-      }
-      if (glamBotRef.current) {
-        glamBotRef.current.pause();
-      }
-      setIsPlayingPreview(false);
-    } else {
-      // Phát cả 2 video từ đầu đồng bộ
-      if (originalVideoRef.current) {
-        originalVideoRef.current.currentTime = 0;
-        originalVideoRef.current.play().catch((err) => console.warn("Original play failed:", err));
-      }
-      if (glamBotRef.current) {
-        glamBotRef.current.play();
-      }
-      setIsPlayingPreview(true);
-    }
-  };
-
-  const handlePlaybackEnded = () => {
-    setIsPlayingPreview(false);
-    if (originalVideoRef.current) {
-      originalVideoRef.current.pause();
-      originalVideoRef.current.currentTime = 0;
-    }
   };
 
   // Helper hiển thị thông báo Toast thành công
@@ -407,13 +396,6 @@ export default function GlamBotPage() {
     }
   };
 
-  // 3. Xử lý "Không lưu"
-  const handleDiscardVideo = () => {
-    setRecordedBlob(null);
-    setIsPlayingPreview(false);
-    navigate("/");
-  };
-
   // Nếu người dùng chưa đăng nhập
   if (!currentUser) {
     return (
@@ -455,7 +437,7 @@ export default function GlamBotPage() {
                 mb: 2.5,
               }}
             >
-              <AlertCircleIcon size={38} />
+              <ErrorIcon sx={{ fontSize: 38 }} />
             </Box>
             <Typography
               variant="h5"
@@ -535,7 +517,7 @@ export default function GlamBotPage() {
             component={RouterLink}
             to="/"
             variant="text"
-            startIcon={<ArrowLeftIcon size={18} />}
+            startIcon={<ArrowBackIcon />}
             sx={{
               color: "#6b7280",
               fontWeight: 600,
@@ -548,7 +530,7 @@ export default function GlamBotPage() {
           </Button>
 
           <Chip
-            icon={<SparklesIcon size={14} color="#ec4899" />}
+            icon={<AutoAwesomeIcon sx={{ fontSize: "16px !important", color: "#ec4899" }} />}
             label="GlamBot 6s Slow-Mo"
             sx={{
               backgroundColor: "rgba(236, 72, 153, 0.12)",
@@ -592,7 +574,7 @@ export default function GlamBotPage() {
             >
               {cameraError ? (
                 <Box sx={{ p: 3, textAlign: "center", color: "#ffffff" }}>
-                  <AlertCircleIcon size={40} color="#f43f5e" style={{ margin: "0 auto 12px" }} />
+                  <ErrorIcon sx={{ fontSize: 40, color: "#f43f5e", mb: 1.5 }} />
                   <Typography variant="body2" sx={{ mb: 2, fontSize: "0.85rem" }}>
                     {cameraError}
                   </Typography>
@@ -600,7 +582,7 @@ export default function GlamBotPage() {
                     size="small"
                     variant="contained"
                     onClick={startCamera}
-                    startIcon={<RotateCcwIcon size={16} />}
+                    startIcon={<ReplayIcon />}
                     sx={{
                       backgroundColor: "#ec4899",
                       borderRadius: "100px",
@@ -782,11 +764,12 @@ export default function GlamBotPage() {
                   id="btn-stop-recording"
                   variant="contained"
                   onClick={stopRecording}
-                  startIcon={<SquareIcon size={20} fill="#ffffff" />}
+                  startIcon={<StopIcon />}
                   sx={{
                     py: 1.4,
                     px: 4,
-                    borderRadius: "100px",
+                    borderRadius: "999px",
+                    whiteSpace: "nowrap",
                     backgroundColor: "#ef4444",
                     color: "#ffffff",
                     fontWeight: 700,
@@ -807,11 +790,12 @@ export default function GlamBotPage() {
                   variant="contained"
                   disabled={countdown !== null || !cameraReady}
                   onClick={handleStartCountdown}
-                  startIcon={<VideoIcon size={22} />}
+                  startIcon={<VideocamIcon />}
                   sx={{
                     py: 1.4,
                     px: 4.5,
-                    borderRadius: "100px",
+                    borderRadius: "999px",
+                    whiteSpace: "nowrap",
                     backgroundColor: "#ec4899",
                     color: "#ffffff",
                     fontWeight: 700,
@@ -841,10 +825,7 @@ export default function GlamBotPage() {
           <GlamBotEffect
             ref={glamBotRef}
             videoBlob={recordedBlob}
-            onBack={() => {
-              setRecordedBlob(null);
-              setIsPlayingPreview(false);
-            }}
+            onBack={handleGoBack}
             onSaveOriginal={handleSaveOriginalVideo}
             onSaveGlamBot={handleTriggerSaveGlamBot}
             onExportComplete={handleGlamBotExportComplete}
