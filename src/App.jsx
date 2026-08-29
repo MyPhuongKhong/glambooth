@@ -13,6 +13,7 @@ import LoginPage from "./pages/Auth/LoginPage";
 import RegisterPage from "./pages/Auth/RegisterPage";
 import GlamBotPage from "./pages/GlamBot/GlamBotPage";
 import PhotoBoothPage from "./pages/PhotoBooth/PhotoBoothPage";
+import GestureBoothPage from "./pages/GestureBooth/GestureBoothPage";
 
 // Placeholder component cho các module tiếp theo
 function PlaceholderModule({ title, icon, subtitle, color, chipText }) {
@@ -296,13 +297,17 @@ export default function App() {
           <Route
             path="/gesture"
             element={
-              <PlaceholderModule
-                title="Gesture Surprise"
-                icon="✌️"
-                subtitle="Tính năng nhận diện cử chỉ tay (bắn tim, chữ V) với AI Camera đang được phát triển."
-                color="#ec4899"
-                chipText="Module 3"
-              />
+              <ProtectedRoute>
+                <GestureBoothPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/gesture-booth"
+            element={
+              <ProtectedRoute>
+                <GestureBoothPage />
+              </ProtectedRoute>
             }
           />
 
