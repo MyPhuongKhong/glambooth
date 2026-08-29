@@ -67,17 +67,17 @@ const initParticles = (type) => {
       type === 'confetti'
         ? Math.random() * 3 + 1
         : type === 'hearts'
-          ? -Math.random() * 2 - 0.5
-          : (Math.random() - 0.5) * 0.3,
+        ? -Math.random() * 2 - 0.5
+        : (Math.random() - 0.5) * 0.3,
     size: Math.random() * 10 + 5,
     color:
       type === 'confetti'
         ? ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8'][
-        Math.floor(Math.random() * 5)
-        ]
+            Math.floor(Math.random() * 5)
+          ]
         : type === 'hearts'
-          ? '#FF69B4'
-          : '#ffffff',
+        ? '#FF69B4'
+        : '#ffffff',
     opacity: Math.random() * 0.8 + 0.2,
     rotation: Math.random() * Math.PI * 2,
     rotSpeed: (Math.random() - 0.5) * 0.1,
@@ -131,12 +131,15 @@ export default function GestureBoothPage() {
   const canvasRef = useRef(null);
   const rafRef = useRef(null);
   const gestureRecognizerRef = useRef(null);
+  const imageSegmenterRef = useRef(null);
   const particlesRef = useRef([]);
   const holdStartRef = useRef(null);
   const lastGestureRef = useRef(null);
   const streamRef = useRef(null);
   const bgImagesRef = useRef({});
   const isCapturingRef = useRef(false);
+  const maskCanvasRef = useRef(null);
+  const personCanvasRef = useRef(null);
 
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -167,27 +170,23 @@ export default function GestureBoothPage() {
     }
   };
 
-  const triggerCapture = async (gesture) => {
+  const triggerCapture = async (gesture, captureCanvas) => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !captureCanvas) return;
     const ctx = canvas.getContext('2d');
 
-    // ✅ THAY: copy sang offscreen ĐỒNG BỘ trước khi RAF đụng vào
-    const offscreen = document.createElement('canvas');
-    offscreen.width = CANVAS_W;
-    offscreen.height = CANVAS_H;
-    offscreen.getContext('2d').drawImage(canvas, 0, 0); // sync, không async
-
-    // Flash effect trên canvas chính
-    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    // Flash effect on main canvas
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
     setIsUploading(true);
     try {
-      // ✅ THAY: toBlob từ offscreen thay vì canvas chính
-      const blob = await new Promise(res =>
-        offscreen.toBlob(res, 'image/jpeg', 0.92)
+      // Capture clean snapshot without HUD
+      const blob = await new Promise((res) =>
+        captureCanvas.toBlob(res, 'image/jpeg', 0.92)
       );
+      if (!blob) throw new Error('Canvas blob conversion failed');
+
       const file = new File(
         [blob],
         `gesture-${Date.now()}.jpg`,
@@ -234,9 +233,9 @@ export default function GestureBoothPage() {
     const render = (timestamp) => {
       ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
 
-      // Always try to draw video, even if readyState < 2
+      // Always try to draw video when video frames exist
       if (video && video.videoWidth > 0) {
-        // 1. Detect gesture
+        // 1. Detect gesture with GestureRecognizer
         let detectedGesture = null;
         if (gestureRecognizerRef.current && video.readyState >= 2) {
           try {
@@ -268,11 +267,26 @@ export default function GestureBoothPage() {
           }
         }
 
-        // 4. Draw background
+        // 3. Segment person if gesture is active
+        let segmentationResult = null;
+        if (detectedGesture && imageSegmenterRef.current && video.readyState >= 2) {
+          try {
+            imageSegmenterRef.current.segmentForVideo(
+              video,
+              timestamp,
+              (result) => {
+                segmentationResult = result;
+              }
+            );
+          } catch (e) {
+            /* skip */
+          }
+        }
+
         if (detectedGesture) {
+          // LAYER 1 (Bottom): Background (theme bgImage or gradient fallback)
           const bgImg = bgImagesRef.current[detectedGesture];
           if (bgImg && bgImg.complete && bgImg.naturalWidth > 0) {
-            // Cover fit
             const scale = Math.max(
               CANVAS_W / bgImg.width,
               CANVAS_H / bgImg.height
@@ -283,7 +297,6 @@ export default function GestureBoothPage() {
             const y = (CANVAS_H - h) / 2;
             ctx.drawImage(bgImg, x, y, w, h);
           } else {
-            // Gradient fallback
             const theme = GESTURE_THEMES[detectedGesture];
             const grad = ctx.createLinearGradient(0, 0, CANVAS_W, CANVAS_H);
             grad.addColorStop(0, theme.bgColors[0]);
@@ -292,23 +305,102 @@ export default function GestureBoothPage() {
             ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
           }
 
-          // Particles on top of background
+          // LAYER 2 (Person): Segmented mirrored person on top of background
+          const mask =
+            segmentationResult?.confidenceMasks?.[0] ||
+            segmentationResult?.categoryMask;
+
+          if (mask) {
+            const maskWidth = mask.width;
+            const maskHeight = mask.height;
+
+            if (!maskCanvasRef.current) {
+              maskCanvasRef.current = document.createElement('canvas');
+            }
+            const maskCanvas = maskCanvasRef.current;
+            if (maskCanvas.width !== maskWidth || maskCanvas.height !== maskHeight) {
+              maskCanvas.width = maskWidth;
+              maskCanvas.height = maskHeight;
+            }
+            const maskCtx = maskCanvas.getContext('2d');
+            const imgData = maskCtx.createImageData(maskWidth, maskHeight);
+            const data = imgData.data;
+
+            if (segmentationResult.confidenceMasks?.[0]) {
+              const floatArr = mask.getAsFloat32Array();
+              for (let i = 0; i < floatArr.length; i++) {
+                const idx = i * 4;
+                data[idx] = 255;
+                data[idx + 1] = 255;
+                data[idx + 2] = 255;
+                data[idx + 3] = Math.round(floatArr[i] * 255);
+              }
+            } else {
+              const uintArr = mask.getAsUint8Array();
+              for (let i = 0; i < uintArr.length; i++) {
+                const idx = i * 4;
+                data[idx] = 255;
+                data[idx + 1] = 255;
+                data[idx + 2] = 255;
+                data[idx + 3] = uintArr[i] > 0 ? 255 : 0;
+              }
+            }
+            maskCtx.putImageData(imgData, 0, 0);
+
+            // Composite person onto personCanvas
+            if (!personCanvasRef.current) {
+              personCanvasRef.current = document.createElement('canvas');
+              personCanvasRef.current.width = CANVAS_W;
+              personCanvasRef.current.height = CANVAS_H;
+            }
+            const personCanvas = personCanvasRef.current;
+            const pCtx = personCanvas.getContext('2d');
+            pCtx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+
+            // A. Draw mirrored camera feed
+            pCtx.save();
+            pCtx.translate(CANVAS_W, 0);
+            pCtx.scale(-1, 1);
+            pCtx.drawImage(video, 0, 0, CANVAS_W, CANVAS_H);
+            pCtx.restore();
+
+            // B. Mask with mirrored maskCanvas
+            pCtx.save();
+            pCtx.globalCompositeOperation = 'destination-in';
+            pCtx.translate(CANVAS_W, 0);
+            pCtx.scale(-1, 1);
+            pCtx.drawImage(maskCanvas, 0, 0, CANVAS_W, CANVAS_H);
+            pCtx.restore();
+
+            // Draw segmented person on top of background
+            ctx.drawImage(personCanvas, 0, 0, CANVAS_W, CANVAS_H);
+          } else {
+            // Fallback: draw mirrored video if mask is still processing
+            ctx.save();
+            ctx.translate(CANVAS_W, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(video, 0, 0, CANVAS_W, CANVAS_H);
+            ctx.restore();
+          }
+
+          // LAYER 3 (Effects): Falling particles on top of person & background
           drawParticles(
             ctx,
             particlesRef.current,
             GESTURE_THEMES[detectedGesture].particleType,
             timestamp
           );
+        } else {
+          // No gesture detected: Normal mirrored camera preview
+          ctx.save();
+          ctx.translate(CANVAS_W, 0);
+          ctx.scale(-1, 1);
+          ctx.drawImage(video, 0, 0, CANVAS_W, CANVAS_H);
+          ctx.restore();
         }
 
-        // 5. Draw mirrored camera (person on top)
-        ctx.save();
-        ctx.translate(CANVAS_W, 0);
-        ctx.scale(-1, 1);
-        ctx.drawImage(video, 0, 0, CANVAS_W, CANVAS_H);
-        ctx.restore();
-
-        // 3. Hold progress + auto-capture
+        // SNAPSHOT CHECK (Clean Capture: Layers 1, 2, 3 WITHOUT Layer 4 HUD)
+        let captureCanvasSnapshot = null;
         if (detectedGesture && holdStartRef.current && !isCapturingRef.current) {
           const elapsed = Date.now() - holdStartRef.current;
           const progress = Math.min((elapsed / HOLD_DURATION) * 100, 100);
@@ -316,11 +408,20 @@ export default function GestureBoothPage() {
           if (progress >= 100) {
             holdStartRef.current = null;
             isCapturingRef.current = true;
-            triggerCapture(detectedGesture); // Lúc này canvas đã có hình ảnh để copy!
+
+            // Copy the exact Layer 1 + 2 + 3 rendering to offscreen canvas
+            captureCanvasSnapshot = document.createElement('canvas');
+            captureCanvasSnapshot.width = CANVAS_W;
+            captureCanvasSnapshot.height = CANVAS_H;
+            captureCanvasSnapshot
+              .getContext('2d')
+              .drawImage(canvas, 0, 0, CANVAS_W, CANVAS_H);
+
+            triggerCapture(detectedGesture, captureCanvasSnapshot);
           }
         }
 
-        // 6. HUD overlay
+        // LAYER 4 (Top): HUD Overlay (Instructions & Countdown Progress)
         if (detectedGesture) {
           const theme = GESTURE_THEMES[detectedGesture];
           ctx.fillStyle = 'rgba(0,0,0,0.45)';
@@ -371,7 +472,7 @@ export default function GestureBoothPage() {
       video.muted = true;
       video.playsInline = true;
 
-      // Wait for video to be truly ready
+      // Wait for video to be ready
       await new Promise((resolve) => {
         video.addEventListener('canplay', resolve, { once: true });
         setTimeout(resolve, 5000);
@@ -382,28 +483,26 @@ export default function GestureBoothPage() {
       } catch (e) {
         console.warn('play() error:', e);
       }
-      // DO NOT call startRenderLoop() here
     } catch (err) {
       console.error('Camera access error:', err);
       setLoadError('Không thể mở camera. Vui lòng cấp quyền truy cập!');
     }
   };
 
-  // MediaPipe Initialization
+  // Concurrent MediaPipe Initialization: GestureRecognizer + ImageSegmenter
   useEffect(() => {
     let cancelled = false;
 
     const initMediaPipe = async () => {
       try {
-        const { FilesetResolver, GestureRecognizer } = await import(
-          '@mediapipe/tasks-vision'
-        );
+        const { FilesetResolver, GestureRecognizer, ImageSegmenter } =
+          await import('@mediapipe/tasks-vision');
 
         const vision = await FilesetResolver.forVisionTasks(
           'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
         );
 
-        const recognizer = await GestureRecognizer.createFromOptions(vision, {
+        const recognizerPromise = GestureRecognizer.createFromOptions(vision, {
           baseOptions: {
             modelAssetPath:
               'https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task',
@@ -416,8 +515,25 @@ export default function GestureBoothPage() {
           minTrackingConfidence: 0.5,
         });
 
+        const segmenterPromise = ImageSegmenter.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath:
+              'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite',
+            delegate: 'GPU',
+          },
+          runningMode: 'VIDEO',
+          outputCategoryMask: true,
+          outputConfidenceMasks: true,
+        });
+
+        const [recognizer, segmenter] = await Promise.all([
+          recognizerPromise,
+          segmenterPromise,
+        ]);
+
         if (!cancelled) {
           gestureRecognizerRef.current = recognizer;
+          imageSegmenterRef.current = segmenter;
           await startCamera();
           setIsLoading(false);
         }
@@ -444,7 +560,6 @@ export default function GestureBoothPage() {
   // Start render loop after canvas is mounted
   useEffect(() => {
     if (isLoading || loadError) return;
-    // Small delay ensures canvas DOM element is mounted
     const timer = setTimeout(() => {
       if (canvasRef.current && videoRef.current) {
         startRenderLoop();
