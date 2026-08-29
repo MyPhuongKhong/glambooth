@@ -220,7 +220,7 @@ export default function PhotoBoothPage() {
       objectUrlsRef.current.forEach((url) => {
         try {
           URL.revokeObjectURL(url);
-        } catch (_) {}
+        } catch (_) { }
       });
       objectUrlsRef.current = [];
     };
@@ -1195,43 +1195,67 @@ export default function PhotoBoothPage() {
         onClose={() => setSavedUrl(null)}
         maxWidth="xs"
         fullWidth
-        PaperProps={{
-          sx: {
-            borderRadius: "24px",
-            p: 2,
-            background: "rgba(255, 255, 255, 0.95)",
-            backdropFilter: "blur(20px)",
-            WebkitBackdropFilter: "blur(20px)",
-            boxShadow: "0 16px 40px rgba(236, 72, 153, 0.25)",
+        slotProps={{
+          backdrop: {
+            sx: {
+              backgroundColor: 'rgba(255, 253, 253, 0.75)',
+              backdropFilter: 'blur(12px)',
+            },
+          },
+          paper: {
+            sx: {
+              backgroundColor: '#ffffff !important',
+              backgroundImage: 'none',
+              opacity: 1,
+              borderRadius: '24px',
+              padding: '16px',
+              boxShadow: '0 16px 40px rgba(236, 72, 153, 0.25)',
+            },
           },
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5, px: 1 }}>
+          <Box sx={{ flex: 1 }} />                      {/* ← spacer trái */}
           <Typography variant="h6" sx={{ fontWeight: 700, color: "#1f2937", fontFamily: "'Quicksand', sans-serif", fontSize: "1.1rem" }}>
             Ảnh Photo Booth của bạn ✨
           </Typography>
-          <IconButton size="small" onClick={() => setSavedUrl(null)} sx={{ color: "#9ca3af" }}>
-            <CloseIcon />
-          </IconButton>
+          <Box sx={{ flex: 1, display: "flex", justifyContent: "flex-end" }}>  {/* ← spacer phải */}
+            <IconButton size="small" onClick={() => setSavedUrl(null)} sx={{ color: "#9ca3af" }}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
         </Box>
-
-        <DialogContent sx={{ p: 0, display: "flex", justifyContent: "center" }}>
+        <DialogContent
+          sx={{
+            p: 1.5,
+            display: "flex",
+            justifyContent: "center",
+          }}
+        >
           {savedUrl && (
-            <img
-              src={savedUrl}
-              alt="Photo Booth Kết quả"
-              style={{
-                maxHeight: "65vh",
-                maxWidth: "100%",
+            <Box
+              sx={{
                 borderRadius: "14px",
+                // overflow: "hidden",
                 boxShadow: "0 8px 24px rgba(0,0,0,0.2)",
-                objectFit: "contain",
+                lineHeight: 0,
               }}
-            />
+            >
+              <img
+                src={savedUrl}
+                alt="Photo Booth Kết quả"
+                style={{
+                  display: "block",
+                  maxHeight: "55vh",
+                  maxWidth: "100%",
+                  objectFit: "contain",
+                }}
+              />
+            </Box>
           )}
         </DialogContent>
 
-        <DialogActions sx={{ display: "flex", flexDirection: "column", gap: 1.2, mt: 2, p: 0 }}>
+        <DialogActions sx={{ display: "flex", flexDirection: "column", gap: 1.2, mt: 2, p: 0, px: 1, pb: 1 }}>
           <Button
             id="btn-dialog-download-photo"
             fullWidth
@@ -1256,7 +1280,7 @@ export default function PhotoBoothPage() {
             Tải ảnh về máy
           </Button>
 
-          <Box sx={{ display: "flex", gap: 1, width: "100%" }}>
+          <Box sx={{ display: "flex", gap: 1.5, width: "100%" }}>
             <Button
               id="btn-dialog-new-session"
               fullWidth
