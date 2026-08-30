@@ -629,6 +629,33 @@ export default function PhotoBoothPage() {
     }
   };
 
+  const handleDownloadLocal = async () => {
+    try {
+      const canvas = reviewCanvasRef.current;
+      if (!canvas) throw new Error("Canvas không khả dụng");
+
+      // Ensure canvas is drawn
+      const ctx = canvas.getContext("2d");
+      drawComposite(ctx, selectedLayout, frameColor, stickers, capturedSlots);
+
+      const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.95));
+      if (!blob) throw new Error("Không thể tạo tệp ảnh");
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `glambooth-photo-${Date.now()}.jpg`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("Đã tải ảnh về máy!");
+    } catch (err) {
+      console.error("Lỗi khi tải ảnh:", err);
+      toast.error("Không thể tải ảnh về máy. Vui lòng thử lại!");
+    }
+  };
+
   const handleDownloadPhoto = async () => {
     if (!savedUrl) return;
     try {
@@ -1134,7 +1161,7 @@ export default function PhotoBoothPage() {
           </Box>
 
           {/* Action Buttons */}
-          <Box sx={{ display: "flex", gap: 2, justifyContent: "center", alignItems: "center" }}>
+          <Box sx={{ display: "flex", gap: 2, justifyContent: "center", alignItems: "center", flexWrap: "wrap" }}>
             <Button
               variant="outlined"
               onClick={handleResetAll}
@@ -1150,6 +1177,29 @@ export default function PhotoBoothPage() {
               }}
             >
               Chụp bộ mới
+            </Button>
+
+            <Button
+              id="btn-download-local-photobooth"
+              variant="outlined"
+              startIcon={<DownloadIcon />}
+              onClick={handleDownloadLocal}
+              sx={{
+                borderRadius: "999px",
+                px: 3,
+                py: 1.1,
+                borderColor: "#ec4899",
+                color: "#ec4899",
+                fontWeight: 700,
+                fontFamily: "'Quicksand', sans-serif",
+                textTransform: "none",
+                "&:hover": {
+                  borderColor: "#db2777",
+                  backgroundColor: "rgba(236, 72, 153, 0.08)",
+                },
+              }}
+            >
+              Tải ảnh về máy
             </Button>
 
             <Button
@@ -1175,7 +1225,7 @@ export default function PhotoBoothPage() {
                 },
               }}
             >
-              {isUploading ? "Đang lưu..." : "Lưu ảnh"}
+              {isUploading ? "Đang lưu..." : "Lưu vào Cloud"}
             </Button>
           </Box>
         </Box>
@@ -1247,16 +1297,43 @@ export default function PhotoBoothPage() {
           )}
         </DialogContent>
 
-        <DialogActions sx={{ display: "flex", flexDirection: "column", gap: 1.2, mt: 2, p: 0, px: 1, pb: 1 }}>
+        <DialogActions sx={{ display: "flex", gap: 1.5, mt: 2, p: 0, px: 1, pb: 1, width: "100%" }}>
           <Button
-            id="btn-dialog-download-photo"
+            id="btn-dialog-new-session"
             fullWidth
-            variant="contained"
-            startIcon={<DownloadIcon />}
-            onClick={handleDownloadPhoto}
+            variant="outlined"
+            startIcon={<CameraAltIcon />}
+            onClick={handleResetAll}
             sx={{
               borderRadius: "999px",
-              py: 1.1,
+              py: 1,
+              whiteSpace: "nowrap",
+              borderColor: "#ec4899",
+              color: "#ec4899",
+              fontWeight: 700,
+              fontFamily: "'Quicksand', sans-serif",
+              textTransform: "none",
+              "&:hover": {
+                borderColor: "#db2777",
+                backgroundColor: "rgba(236, 72, 153, 0.08)",
+              },
+            }}
+          >
+            Chụp bộ mới
+          </Button>
+
+          <Button
+            id="btn-dialog-profile-album"
+            fullWidth
+            variant="contained"
+            startIcon={<PhotoLibraryIcon />}
+            onClick={() => {
+              setSavedUrl(null);
+              navigate("/profile");
+            }}
+            sx={{
+              borderRadius: "999px",
+              py: 1,
               whiteSpace: "nowrap",
               background: "linear-gradient(135deg, #e91e8c, #c2185b)",
               color: "#ffffff",
@@ -1269,56 +1346,8 @@ export default function PhotoBoothPage() {
               },
             }}
           >
-            Tải ảnh về máy
+            Bộ sưu tập
           </Button>
-
-          <Box sx={{ display: "flex", gap: 1.5, width: "100%" }}>
-            <Button
-              id="btn-dialog-new-session"
-              fullWidth
-              variant="outlined"
-              startIcon={<CameraAltIcon />}
-              onClick={handleResetAll}
-              sx={{
-                borderRadius: "999px",
-                py: 1,
-                whiteSpace: "nowrap",
-                borderColor: "#ec4899",
-                color: "#ec4899",
-                fontWeight: 700,
-                fontFamily: "'Quicksand', sans-serif",
-                textTransform: "none",
-                "&:hover": {
-                  borderColor: "#db2777",
-                  backgroundColor: "rgba(236, 72, 153, 0.08)",
-                },
-              }}
-            >
-              Chụp bộ mới
-            </Button>
-
-            <Button
-              id="btn-dialog-profile-album"
-              fullWidth
-              variant="outlined"
-              color="secondary"
-              startIcon={<PhotoLibraryIcon />}
-              onClick={() => {
-                setSavedUrl(null);
-                navigate("/profile");
-              }}
-              sx={{
-                borderRadius: "999px",
-                py: 1,
-                whiteSpace: "nowrap",
-                fontWeight: 700,
-                fontFamily: "'Quicksand', sans-serif",
-                textTransform: "none",
-              }}
-            >
-              Bộ sưu tập
-            </Button>
-          </Box>
         </DialogActions>
       </Dialog>
     </Box>
