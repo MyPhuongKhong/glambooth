@@ -49,7 +49,7 @@ const GESTURE_THEMES = {
   },
 };
 
-const HOLD_DURATION = 2000;
+const HOLD_DURATION = 3000;
 const CANVAS_W = 640;
 const CANVAS_H = 480;
 
@@ -237,7 +237,7 @@ export default function GestureBoothPage() {
 
     setIsUploading(true);
     try {
-      // Capture clean snapshot without HUD or hand landmark skeletons
+      // Capture clean snapshot without HUD, large countdown or hand landmark skeletons
       const blob = await new Promise((res) =>
         captureCanvas.toBlob(res, 'image/jpeg', 0.92)
       );
@@ -389,7 +389,6 @@ export default function GestureBoothPage() {
             const imgData = maskCtx.createImageData(maskWidth, maskHeight);
             const data = imgData.data;
 
-            // Sharp thresholding (> 0.5) to avoid blurry fringe/artifacts
             if (segmentationResult.confidenceMasks?.[0]) {
               const floatArr = mask.getAsFloat32Array();
               for (let i = 0; i < floatArr.length; i++) {
@@ -397,7 +396,6 @@ export default function GestureBoothPage() {
                 data[idx] = 255;
                 data[idx + 1] = 255;
                 data[idx + 2] = 255;
-                // data[idx + 3] = floatArr[i] > 0.5 ? 255 : 0;
                 data[idx + 3] = Math.round(floatArr[i] * 255);
               }
             } else {
@@ -465,14 +463,16 @@ export default function GestureBoothPage() {
         }
 
         // ══════════════════════════════════════
-        // SNAPSHOT CHECK (Clean Capture: Layers 1, 2, 3 WITHOUT HUD & Skeletal Landmarks)
+        // SNAPSHOT CHECK (Clean Capture: Layers 1, 2, 3 WITHOUT HUD & Countdown)
         // ══════════════════════════════════════
         let captureCanvasSnapshot = null;
+        let currentProgress = 0;
+
         if (detectedGesture && holdStartRef.current && !isCapturingRef.current) {
           const elapsed = Date.now() - holdStartRef.current;
-          const progress = Math.min((elapsed / HOLD_DURATION) * 100, 100);
-          setHoldProgress(progress);
-          if (progress >= 100) {
+          currentProgress = Math.min((elapsed / HOLD_DURATION) * 100, 100);
+          setHoldProgress(currentProgress);
+          if (currentProgress >= 100) {
             holdStartRef.current = null;
             isCapturingRef.current = true;
 
@@ -489,7 +489,7 @@ export default function GestureBoothPage() {
         }
 
         // ══════════════════════════════════════
-        // LAYER 4 (Top): HUD Overlay (Hand Landmarks, Countdown & Instruction)
+        // LAYER 4 (Top): HUD Overlay (Hand Landmarks, Large Floating Countdown & Enhanced Instructions)
         // ══════════════════════════════════════
 
         // Visual feedback: Draw tracked hand skeleton
@@ -499,24 +499,66 @@ export default function GestureBoothPage() {
 
         if (detectedGesture) {
           const theme = GESTURE_THEMES[detectedGesture];
-          ctx.fillStyle = 'rgba(0,0,0,0.45)';
+
+          // 1. High contrast instruction badge at top
+          ctx.save();
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
           ctx.beginPath();
-          ctx.roundRect(CANVAS_W / 2 - 110, 14, 220, 40, 20);
+          ctx.roundRect(CANVAS_W / 2 - 110, 14, 220, 42, 21);
           ctx.fill();
-          ctx.fillStyle = 'white';
-          ctx.font = 'bold 17px Arial';
+
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+          ctx.shadowBlur = 6;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 2;
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 17px Arial, sans-serif';
           ctx.textAlign = 'center';
-          ctx.fillText(theme.label, CANVAS_W / 2, 40);
+          ctx.textBaseline = 'middle';
+          ctx.fillText(theme.label, CANVAS_W / 2, 35);
+          ctx.restore();
+
+          // 2. Large Floating Countdown (3, 2, 1) in the center of canvas
+          const remainingSeconds = Math.max(
+            1,
+            Math.ceil(((100 - currentProgress) / 100) * (HOLD_DURATION / 1000))
+          );
+
+          ctx.save();
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.font = '900 120px Arial, system-ui, sans-serif';
+
+          // Heavy dark stroke for ultra-pop contrast
+          ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+          ctx.lineWidth = 12;
+          ctx.lineJoin = 'round';
+          ctx.strokeText(`${remainingSeconds}`, CANVAS_W / 2, CANVAS_H / 2);
+
+          // Glowing white text fill with drop shadow
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+          ctx.shadowBlur = 16;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(`${remainingSeconds}`, CANVAS_W / 2, CANVAS_H / 2);
+          ctx.restore();
         } else {
-          // Idle hint
-          ctx.fillStyle = 'rgba(0,0,0,0.4)';
+          // Idle hint with high contrast badge
+          ctx.save();
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
           ctx.beginPath();
-          ctx.roundRect(CANVAS_W / 2 - 130, 14, 260, 40, 20);
+          ctx.roundRect(CANVAS_W / 2 - 135, 14, 270, 42, 21);
           ctx.fill();
-          ctx.fillStyle = 'rgba(255,255,255,0.85)';
-          ctx.font = '15px Arial';
+
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+          ctx.shadowBlur = 6;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 2;
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+          ctx.font = 'bold 15px Arial, sans-serif';
           ctx.textAlign = 'center';
-          ctx.fillText('Giơ tay ✌️ 🖐️ 👍 trước camera', CANVAS_W / 2, 40);
+          ctx.textBaseline = 'middle';
+          ctx.fillText('Giơ tay ✌️ 🖐️ 👍 trước camera', CANVAS_W / 2, 35);
+          ctx.restore();
         }
       } else {
         // Show "camera loading" placeholder
@@ -869,7 +911,7 @@ export default function GestureBoothPage() {
                     variant="caption"
                     sx={{ color: 'rgba(255,255,255,0.5)' }}
                   >
-                    Giữ 2 giây để chụp
+                    Giữ 3 giây để chụp
                   </Typography>
                 </Box>
                 {currentGesture === key && (
