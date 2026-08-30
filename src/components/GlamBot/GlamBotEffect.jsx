@@ -20,7 +20,8 @@ import {
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import PauseIcon from "@mui/icons-material/Pause";
 import ReplayIcon from "@mui/icons-material/Replay";
-import FileUploadIcon from "@mui/icons-material/FileUpload";
+import DownloadIcon from "@mui/icons-material/Download";
+import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import MovieIcon from "@mui/icons-material/Movie";
 import toast from "react-hot-toast";
@@ -101,11 +102,9 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
   {
     videoBlob,
     onBack,
-    onSaveOriginal,
     onSaveGlamBot,
     onExportComplete,
     isSaving = false,
-    savingType = null,
   },
   ref
 ) {
@@ -115,7 +114,6 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
   const canvasRef = useRef(null);
   const animationFrameRef = useRef(null);
   const mediaRecorderRef = useRef(null);
-  const exportChunksRef = useRef([]);
 
   // URL state
   const [videoObjectUrl, setVideoObjectUrl] = useState("");
@@ -126,6 +124,7 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
 
   // Export & Time tracking
   const [isExporting, setIsExporting] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [glambotCurrentTime, setGlambotCurrentTime] = useState(0);
 
@@ -300,119 +299,173 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
     }
   };
 
-  // Export GlamBot Video via Canvas CaptureStream + MediaRecorder
-  const handleExportVideo = useCallback(async () => {
-    const canvas = canvasRef.current;
-    const video = glambotVideoRef.current;
+  // Core function to render and record GlamBot effect from canvas into a Blob
+  const generateGlamBotBlob = useCallback(() => {
+    return new Promise((resolve, reject) => {
+      const canvas = canvasRef.current;
+      const video = glambotVideoRef.current;
 
-    if (!canvas || !video) {
-      toast.error("Chưa tải xong dữ liệu video.");
-      return;
-    }
-
-    if (typeof canvas.captureStream !== "function") {
-      toast.error(
-        "Trình duyệt không hỗ trợ xuất video từ Canvas. Vui lòng dùng Chrome hoặc Firefox!"
-      );
-      return;
-    }
-
-    try {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
+      if (!canvas || !video) {
+        reject(new Error("Chưa tải xong dữ liệu video."));
+        return;
       }
-      video.pause();
-      setIsPlayingGlambot(false);
 
-      setIsExporting(true);
-      setExportProgress(0);
-
-      video.currentTime = 0;
-      video.muted = true;
-      updateGlamBotPlaybackRate(0);
-
-      const canvasStream = canvas.captureStream(30);
-      const mimeType = getSupportedExportMimeType() || "video/webm";
-      const mediaRecorder = new MediaRecorder(
-        canvasStream,
-        mimeType ? { mimeType } : undefined
-      );
-      mediaRecorderRef.current = mediaRecorder;
-      exportChunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) {
-          exportChunksRef.current.push(e.data);
-        }
-      };
-
-      mediaRecorder.onstop = () => {
-        const finalMime = mediaRecorder.mimeType || mimeType || "video/webm";
-        const exportedBlob = new Blob(exportChunksRef.current, { type: finalMime });
-        setIsExporting(false);
-        setExportProgress(100);
-
-        toast.success("Xuất hiệu ứng GlamBot thành công! ✨", {
-          icon: "🎬",
-        });
-
-        if (typeof onExportComplete === "function") {
-          onExportComplete(exportedBlob);
-        }
-      };
-
-      mediaRecorder.start(200);
-
-      const totalDuration = video.duration || 6.0;
-
-      const exportLoop = () => {
-        if (!mediaRecorderRef.current || mediaRecorderRef.current.state === "inactive") {
-          return;
-        }
-
-        renderCurrentCanvasFrame();
-
-        const progressPercent = Math.min(
-          98,
-          Math.round(((video.currentTime || 0) / totalDuration) * 100)
+      if (typeof canvas.captureStream !== "function") {
+        reject(
+          new Error(
+            "Trình duyệt không hỗ trợ xuất video từ Canvas. Vui lòng dùng Chrome hoặc Firefox!"
+          )
         );
-        setExportProgress(progressPercent);
+        return;
+      }
 
-        if (!video.ended && !video.paused) {
-          animationFrameRef.current = requestAnimationFrame(exportLoop);
-        } else {
+      try {
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+        }
+        video.pause();
+        setIsPlayingGlambot(false);
+
+        setIsExporting(true);
+        setExportProgress(0);
+
+        video.currentTime = 0;
+        video.muted = true;
+        updateGlamBotPlaybackRate(0);
+
+        const canvasStream = canvas.captureStream(30);
+        const mimeType = getSupportedExportMimeType() || "video/webm";
+        const mediaRecorder = new MediaRecorder(
+          canvasStream,
+          mimeType ? { mimeType } : undefined
+        );
+        mediaRecorderRef.current = mediaRecorder;
+        const chunks = [];
+
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) {
+            chunks.push(e.data);
+          }
+        };
+
+        mediaRecorder.onstop = () => {
+          const finalMime = mediaRecorder.mimeType || mimeType || "video/webm";
+          const exportedBlob = new Blob(chunks, { type: finalMime });
+          setIsExporting(false);
+          setExportProgress(100);
+          resolve(exportedBlob);
+        };
+
+        mediaRecorder.start(200);
+
+        const totalDuration = video.duration || 6.0;
+
+        const exportLoop = () => {
+          if (!mediaRecorderRef.current || mediaRecorderRef.current.state === "inactive") {
+            return;
+          }
+
+          renderCurrentCanvasFrame();
+
+          const progressPercent = Math.min(
+            98,
+            Math.round(((video.currentTime || 0) / totalDuration) * 100)
+          );
+          setExportProgress(progressPercent);
+
+          if (!video.ended && !video.paused) {
+            animationFrameRef.current = requestAnimationFrame(exportLoop);
+          } else {
+            setExportProgress(100);
+            setTimeout(() => {
+              if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+                mediaRecorderRef.current.stop();
+              }
+            }, 300);
+          }
+        };
+
+        video.onended = () => {
           setExportProgress(100);
           setTimeout(() => {
             if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
               mediaRecorderRef.current.stop();
             }
           }, 300);
-        }
-      };
+        };
 
-      video.onended = () => {
-        setExportProgress(100);
-        setTimeout(() => {
-          if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-            mediaRecorderRef.current.stop();
-          }
-        }, 300);
-      };
+        video
+          .play()
+          .then(() => {
+            animationFrameRef.current = requestAnimationFrame(exportLoop);
+          })
+          .catch((err) => {
+            setIsExporting(false);
+            reject(err);
+          });
+      } catch (err) {
+        setIsExporting(false);
+        reject(err);
+      }
+    });
+  }, [renderCurrentCanvasFrame, updateGlamBotPlaybackRate]);
 
-      await video.play();
-      animationFrameRef.current = requestAnimationFrame(exportLoop);
+  // 1. Export GlamBot Video and pass to onExportComplete for Cloud save
+  const handleExportVideo = useCallback(async () => {
+    try {
+      const exportedBlob = await generateGlamBotBlob();
+      toast.success("Xuất hiệu ứng GlamBot thành công! ✨", {
+        icon: "🎬",
+      });
+
+      if (typeof onExportComplete === "function") {
+        onExportComplete(exportedBlob);
+      }
     } catch (err) {
       console.error("Export GlamBot failed:", err);
-      toast.error("Lỗi khi xuất video GlamBot. Vui lòng thử lại!");
-      setIsExporting(false);
+      toast.error(err.message || "Lỗi khi xuất video GlamBot. Vui lòng thử lại!");
     }
-  }, [renderCurrentCanvasFrame, updateGlamBotPlaybackRate, onExportComplete]);
+  }, [generateGlamBotBlob, onExportComplete]);
+
+  // 2. Download GlamBot Video directly to user's device
+  const handleDownloadGlamBot = useCallback(async () => {
+    if (isDownloading || isExporting || isSaving) return;
+
+    setIsDownloading(true);
+    try {
+      const exportedBlob = await generateGlamBotBlob();
+      const extension = exportedBlob.type && exportedBlob.type.includes("mp4") ? "mp4" : "webm";
+      const downloadUrl = URL.createObjectURL(exportedBlob);
+
+      const downloadLink = document.createElement("a");
+      downloadLink.href = downloadUrl;
+      downloadLink.download = `GlamBot_Cinematic_${Date.now()}.${extension}`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+
+      // Clean up object URL after small delay
+      setTimeout(() => {
+        URL.revokeObjectURL(downloadUrl);
+      }, 1000);
+
+      toast.success("Đã tải video GlamBot về máy! ✨", {
+        icon: "💾",
+      });
+    } catch (err) {
+      console.error("Download GlamBot video failed:", err);
+      toast.error(err.message || "Lỗi khi tải video GlamBot về máy. Vui lòng thử lại!");
+    } finally {
+      setIsDownloading(false);
+    }
+  }, [generateGlamBotBlob, isDownloading, isExporting, isSaving]);
 
   // Imperative handle
   useImperativeHandle(
     ref,
     () => ({
       exportVideo: () => handleExportVideo(),
+      downloadVideo: () => handleDownloadGlamBot(),
       playOriginal: () => {
         if (originalVideoRef.current) {
           originalVideoRef.current.play();
@@ -448,14 +501,17 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
       isPlayingOriginal,
       isPlayingGlambot,
       isExporting,
+      isDownloading,
     }),
     [
       handleExportVideo,
+      handleDownloadGlamBot,
       updateGlamBotPlaybackRate,
       startGlamBotRafLoop,
       isPlayingOriginal,
       isPlayingGlambot,
       isExporting,
+      isDownloading,
     ]
   );
 
@@ -499,7 +555,7 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
         src={videoObjectUrl || undefined}
         playsInline
         muted
-        preload="auto"
+        preload="metadata"
         onTimeUpdate={handleGlamBotTimeUpdate}
         onEnded={handleGlamBotEnded}
         onLoadedData={handleGlamBotLoadedData}
@@ -590,7 +646,12 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
             <video
               ref={originalVideoRef}
               src={videoObjectUrl || undefined}
+              controls
               playsInline
+              muted
+              preload="metadata"
+              onPlay={() => setIsPlayingOriginal(true)}
+              onPause={() => setIsPlayingOriginal(false)}
               onEnded={() => setIsPlayingOriginal(false)}
               style={{
                 maxHeight: "100%",
@@ -841,7 +902,7 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
           id="btn-re-record"
           variant="outlined"
           color="secondary"
-          disabled={isSaving || isExporting}
+          disabled={isSaving || isExporting || isDownloading}
           startIcon={<ReplayIcon />}
           onClick={onBack}
           sx={{
@@ -858,20 +919,20 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
           Quay lại
         </Button>
 
-        {/* Button 2: "Lưu video gốc" */}
+        {/* Button 2: "Tải video GlamBot về máy" */}
         <Button
-          id="btn-save-original-video"
+          id="btn-download-glambot-video"
           variant="outlined"
           color="primary"
-          disabled={isSaving || isExporting}
+          disabled={isSaving || isExporting || isDownloading}
           startIcon={
-            isSaving && savingType === "original" ? (
+            isDownloading ? (
               <CircularProgress size={18} color="inherit" />
             ) : (
-              <FileUploadIcon />
+              <DownloadIcon />
             )
           }
-          onClick={onSaveOriginal}
+          onClick={handleDownloadGlamBot}
           sx={{
             borderRadius: "999px",
             px: 3,
@@ -889,21 +950,19 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
             },
           }}
         >
-          {isSaving && savingType === "original"
-            ? "Đang lưu video gốc..."
-            : "Lưu video gốc"}
+          {isDownloading ? "Đang tải về..." : "Tải video GlamBot về máy"}
         </Button>
 
-        {/* Button 3: "Lưu Video GlamBot" */}
+        {/* Button 3: "Lưu video GlamBot vào Cloud" */}
         <Button
-          id="btn-save-glambot-video"
+          id="btn-save-glambot-cloud"
           variant="contained"
-          disabled={isSaving || isExporting}
+          disabled={isSaving || isExporting || isDownloading}
           startIcon={
-            (isSaving && savingType === "glambot") || isExporting ? (
+            isSaving || (isExporting && !isDownloading) ? (
               <CircularProgress size={18} color="inherit" />
             ) : (
-              <AutoAwesomeIcon />
+              <CloudUploadIcon />
             )
           }
           onClick={() => {
@@ -931,9 +990,11 @@ const GlamBotEffect = forwardRef(function GlamBotEffect(
             },
           }}
         >
-          {(isSaving && savingType === "glambot") || isExporting
-            ? "Đang xuất & lưu GlamBot..."
-            : "Lưu Video GlamBot"}
+          {isSaving
+            ? "Đang lưu vào Cloud..."
+            : isExporting && !isDownloading
+            ? "Đang xuất video..."
+            : "Lưu video GlamBot vào Cloud"}
         </Button>
       </Box>
     </Box>

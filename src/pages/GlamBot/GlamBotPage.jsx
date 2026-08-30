@@ -25,11 +25,11 @@ import { uploadToCloudinary } from "../../cloudinary/upload";
 import { db } from "../../firebase/config";
 import GlamBotEffect from "../../components/GlamBot/GlamBotEffect";
 
-// Xác định định dạng video tương thích trên trình duyệt
+// Xác định định dạng video tương thích trên trình duyệt (không cần audio codecs)
 function getSupportedMimeType() {
   const types = [
-    "video/webm;codecs=vp9,opus",
-    "video/webm;codecs=vp8,opus",
+    "video/webm;codecs=vp9",
+    "video/webm;codecs=vp8",
     "video/webm",
     "video/mp4",
   ];
@@ -64,9 +64,8 @@ export default function GlamBotPage() {
   // Video recording state (single recording)
   const [recordedBlob, setRecordedBlob] = useState(null);
 
-  // Trạng thái lưu / upload
+  // Trạng thái lưu / upload vào Cloud
   const [isSaving, setIsSaving] = useState(false);
-  const [savingType, setSavingType] = useState(null); // 'original' | 'glambot'
 
   // Object URL cho recordedBlob
   const recordedVideoUrl = useMemo(() => {
@@ -98,7 +97,7 @@ export default function GlamBotPage() {
           facingMode: "user",
           aspectRatio: { ideal: 9 / 16 },
         },
-        audio: true,
+        audio: false,
       });
 
       streamRef.current = stream;
@@ -109,9 +108,9 @@ export default function GlamBotPage() {
       setCameraReady(true);
     } catch (error) {
       console.error("Camera access error:", error);
-      let message = "Không thể truy cập camera hoặc micro.";
+      let message = "Không thể truy cập camera.";
       if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
-        message = "Vui lòng cấp quyền truy cập Camera & Micro trên trình duyệt để quay video!";
+        message = "Vui lòng cấp quyền truy cập Camera trên trình duyệt để quay video!";
       } else if (error.name === "NotFoundError" || error.name === "DevicesNotFoundError") {
         message = "Không tìm thấy thiết bị Camera phù hợp.";
       }
@@ -297,53 +296,7 @@ export default function GlamBotPage() {
     );
   };
 
-  // 1. Lưu video gốc (chưa qua hiệu ứng GlamBot)
-  const handleSaveOriginalVideo = async () => {
-    if (!recordedBlob) {
-      toast.error("Vui lòng quay video trước khi lưu!");
-      return;
-    }
-
-    if (!currentUser) {
-      toast.error("Vui lòng đăng nhập để lưu video vào tài khoản!");
-      navigate("/login");
-      return;
-    }
-
-    setIsSaving(true);
-    setSavingType("original");
-
-    try {
-      const mime = recordedBlob.type || "video/webm";
-      const extension = mime.includes("mp4") ? "mp4" : "webm";
-      const file = new File(
-        [recordedBlob],
-        `glambot_raw_${currentUser.uid}_${Date.now()}.${extension}`,
-        { type: mime }
-      );
-
-      const uploadResult = await uploadToCloudinary(file, "glambot");
-
-      await addDoc(collection(db, "videos"), {
-        userId: currentUser.uid,
-        url: uploadResult.url,
-        publicId: uploadResult.publicId || "",
-        type: "glambot",
-        isOriginal: true,
-        createdAt: serverTimestamp(),
-      });
-
-      showSavedSuccessToast();
-    } catch (error) {
-      console.error("Save original video error:", error);
-      toast.error("Lưu video gốc thất bại. Vui lòng thử lại!");
-    } finally {
-      setIsSaving(false);
-      setSavingType(null);
-    }
-  };
-
-  // 2. Kích hoạt xuất & Lưu video sau khi xuất hiệu ứng GlamBot Cinematic
+  // Kích hoạt xuất & Lưu video sau khi xuất hiệu ứng GlamBot Cinematic
   const handleTriggerSaveGlamBot = () => {
     if (!currentUser) {
       toast.error("Vui lòng đăng nhập để lưu video!");
@@ -353,7 +306,6 @@ export default function GlamBotPage() {
 
     if (glamBotRef.current) {
       setIsSaving(true);
-      setSavingType("glambot");
       glamBotRef.current.exportVideo();
     }
   };
@@ -363,7 +315,6 @@ export default function GlamBotPage() {
       toast.error("Vui lòng đăng nhập để lưu video!");
       navigate("/login");
       setIsSaving(false);
-      setSavingType(null);
       return;
     }
 
@@ -392,7 +343,6 @@ export default function GlamBotPage() {
       toast.error("Lưu GlamBot video thất bại. Vui lòng thử lại!");
     } finally {
       setIsSaving(false);
-      setSavingType(null);
     }
   };
 
@@ -601,6 +551,7 @@ export default function GlamBotPage() {
                     autoPlay
                     playsInline
                     muted
+                    onLoadedMetadata={(e) => e.target.play().catch(() => {})}
                     style={{
                       width: "100%",
                       height: "100%",
@@ -826,11 +777,9 @@ export default function GlamBotPage() {
             ref={glamBotRef}
             videoBlob={recordedBlob}
             onBack={handleGoBack}
-            onSaveOriginal={handleSaveOriginalVideo}
             onSaveGlamBot={handleTriggerSaveGlamBot}
             onExportComplete={handleGlamBotExportComplete}
             isSaving={isSaving}
-            savingType={savingType}
           />
         )}
       </Container>
