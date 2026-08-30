@@ -39,19 +39,28 @@ const GESTURE_THEMES = {
     particleType: 'stars',
     emoji: '🖐️',
   },
-  ILoveYou: {
-    name: 'Finger Heart 🤞',
-    label: 'Giữ 🤞 để chụp',
+  Thumb_Up: {
+    name: 'Thumb Up 👍',
+    label: 'Giữ 👍 để chụp',
     bgImage: '/backgrounds/heart.jpg',
     bgColors: ['#FF69B4', '#FF1493'],
     particleType: 'hearts',
-    emoji: '🤞',
+    emoji: '👍',
   },
 };
 
 const HOLD_DURATION = 2000;
 const CANVAS_W = 640;
 const CANVAS_H = 480;
+
+// MediaPipe Hand skeleton connections
+const HAND_CONNECTIONS = [
+  [0, 1], [1, 2], [2, 3], [3, 4],       // Thumb
+  [0, 5], [5, 6], [6, 7], [7, 8],       // Index
+  [5, 9], [9, 10], [10, 11], [11, 12],  // Middle
+  [9, 13], [13, 14], [14, 15], [15, 16],// Ring
+  [13, 17], [0, 17], [17, 18], [18, 19], [19, 20], // Pinky & Palm
+];
 
 // ══════════════════════════════════════
 // PARTICLE SYSTEM (outside component)
@@ -123,6 +132,53 @@ const drawParticles = (ctx, particles, type, time) => {
   });
 };
 
+// ══════════════════════════════════════
+// HAND LANDMARK VISUALIZER (HUD Layer)
+// ══════════════════════════════════════
+
+const drawHandLandmarks = (ctx, landmarksList) => {
+  if (!landmarksList || landmarksList.length === 0) return;
+
+  landmarksList.forEach((landmarks) => {
+    // Map normalized mirrored coordinates
+    const points = landmarks.map((lm) => ({
+      x: (1 - lm.x) * CANVAS_W,
+      y: lm.y * CANVAS_H,
+    }));
+
+    // Draw connecting lines
+    ctx.save();
+    ctx.strokeStyle = 'rgba(233, 30, 140, 0.85)';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    HAND_CONNECTIONS.forEach(([startIdx, endIdx]) => {
+      const p1 = points[startIdx];
+      const p2 = points[endIdx];
+      if (p1 && p2) {
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.stroke();
+      }
+    });
+
+    // Draw joints
+    points.forEach((p, idx) => {
+      ctx.beginPath();
+      // Highlight fingertips
+      const isTip = [4, 8, 12, 16, 20].includes(idx);
+      ctx.arc(p.x, p.y, isTip ? 5 : 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = isTip ? '#ffffff' : '#FFD700';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(233, 30, 140, 0.9)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    });
+    ctx.restore();
+  });
+};
+
 export default function GestureBoothPage() {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
@@ -181,7 +237,7 @@ export default function GestureBoothPage() {
 
     setIsUploading(true);
     try {
-      // Capture clean snapshot without HUD
+      // Capture clean snapshot without HUD or hand landmark skeletons
       const blob = await new Promise((res) =>
         captureCanvas.toBlob(res, 'image/jpeg', 0.92)
       );
@@ -235,19 +291,26 @@ export default function GestureBoothPage() {
 
       // Always try to draw video when video frames exist
       if (video && video.videoWidth > 0) {
-        // 1. Detect gesture with GestureRecognizer
+        // 1. Detect gesture & extract hand landmarks with GestureRecognizer
         let detectedGesture = null;
+        let detectedLandmarks = [];
+
         if (gestureRecognizerRef.current && video.readyState >= 2) {
           try {
             const results = gestureRecognizerRef.current.recognizeForVideo(
               video,
               timestamp
             );
+
             if (results.gestures?.length > 0) {
               const top = results.gestures[0][0];
               if (top.score > 0.7 && GESTURE_THEMES[top.categoryName]) {
                 detectedGesture = top.categoryName;
               }
+            }
+
+            if (results.landmarks?.length > 0) {
+              detectedLandmarks = results.landmarks;
             }
           } catch (e) {
             /* skip */
@@ -326,6 +389,7 @@ export default function GestureBoothPage() {
             const imgData = maskCtx.createImageData(maskWidth, maskHeight);
             const data = imgData.data;
 
+            // Sharp thresholding (> 0.5) to avoid blurry fringe/artifacts
             if (segmentationResult.confidenceMasks?.[0]) {
               const floatArr = mask.getAsFloat32Array();
               for (let i = 0; i < floatArr.length; i++) {
@@ -333,6 +397,7 @@ export default function GestureBoothPage() {
                 data[idx] = 255;
                 data[idx + 1] = 255;
                 data[idx + 2] = 255;
+                // data[idx + 3] = floatArr[i] > 0.5 ? 255 : 0;
                 data[idx + 3] = Math.round(floatArr[i] * 255);
               }
             } else {
@@ -399,7 +464,9 @@ export default function GestureBoothPage() {
           ctx.restore();
         }
 
-        // SNAPSHOT CHECK (Clean Capture: Layers 1, 2, 3 WITHOUT Layer 4 HUD)
+        // ══════════════════════════════════════
+        // SNAPSHOT CHECK (Clean Capture: Layers 1, 2, 3 WITHOUT HUD & Skeletal Landmarks)
+        // ══════════════════════════════════════
         let captureCanvasSnapshot = null;
         if (detectedGesture && holdStartRef.current && !isCapturingRef.current) {
           const elapsed = Date.now() - holdStartRef.current;
@@ -421,7 +488,15 @@ export default function GestureBoothPage() {
           }
         }
 
-        // LAYER 4 (Top): HUD Overlay (Instructions & Countdown Progress)
+        // ══════════════════════════════════════
+        // LAYER 4 (Top): HUD Overlay (Hand Landmarks, Countdown & Instruction)
+        // ══════════════════════════════════════
+
+        // Visual feedback: Draw tracked hand skeleton
+        if (detectedLandmarks.length > 0) {
+          drawHandLandmarks(ctx, detectedLandmarks);
+        }
+
         if (detectedGesture) {
           const theme = GESTURE_THEMES[detectedGesture];
           ctx.fillStyle = 'rgba(0,0,0,0.45)';
@@ -441,7 +516,7 @@ export default function GestureBoothPage() {
           ctx.fillStyle = 'rgba(255,255,255,0.85)';
           ctx.font = '15px Arial';
           ctx.textAlign = 'center';
-          ctx.fillText('Giơ tay ✌️ 🖐️ 🤞 trước camera', CANVAS_W / 2, 40);
+          ctx.fillText('Giơ tay ✌️ 🖐️ 👍 trước camera', CANVAS_W / 2, 40);
         }
       } else {
         // Show "camera loading" placeholder
