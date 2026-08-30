@@ -13,7 +13,9 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import DownloadIcon from '@mui/icons-material/Download';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import CollectionsIcon from '@mui/icons-material/Collections';
+import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { db } from '../../firebase/config';
 import { uploadToCloudinary } from '../../cloudinary/upload';
@@ -53,17 +55,16 @@ const HOLD_DURATION = 3000;
 const CANVAS_W = 640;
 const CANVAS_H = 480;
 
-// MediaPipe Hand skeleton connections
 const HAND_CONNECTIONS = [
-  [0, 1], [1, 2], [2, 3], [3, 4],       // Thumb
-  [0, 5], [5, 6], [6, 7], [7, 8],       // Index
-  [5, 9], [9, 10], [10, 11], [11, 12],  // Middle
-  [9, 13], [13, 14], [14, 15], [15, 16],// Ring
-  [13, 17], [0, 17], [17, 18], [18, 19], [19, 20], // Pinky & Palm
+  [0, 1], [1, 2], [2, 3], [3, 4],
+  [0, 5], [5, 6], [6, 7], [7, 8],
+  [5, 9], [9, 10], [10, 11], [11, 12],
+  [9, 13], [13, 14], [14, 15], [15, 16],
+  [13, 17], [0, 17], [17, 18], [18, 19], [19, 20],
 ];
 
 // ══════════════════════════════════════
-// PARTICLE SYSTEM (outside component)
+// PARTICLE SYSTEM
 // ══════════════════════════════════════
 
 const initParticles = (type) => {
@@ -133,20 +134,18 @@ const drawParticles = (ctx, particles, type, time) => {
 };
 
 // ══════════════════════════════════════
-// HAND LANDMARK VISUALIZER (HUD Layer)
+// HAND LANDMARK VISUALIZER
 // ══════════════════════════════════════
 
 const drawHandLandmarks = (ctx, landmarksList) => {
   if (!landmarksList || landmarksList.length === 0) return;
 
   landmarksList.forEach((landmarks) => {
-    // Map normalized mirrored coordinates
     const points = landmarks.map((lm) => ({
       x: (1 - lm.x) * CANVAS_W,
       y: lm.y * CANVAS_H,
     }));
 
-    // Draw connecting lines
     ctx.save();
     ctx.strokeStyle = 'rgba(233, 30, 140, 0.85)';
     ctx.lineWidth = 3;
@@ -163,10 +162,8 @@ const drawHandLandmarks = (ctx, landmarksList) => {
       }
     });
 
-    // Draw joints
     points.forEach((p, idx) => {
       ctx.beginPath();
-      // Highlight fingertips
       const isTip = [4, 8, 12, 16, 20].includes(idx);
       ctx.arc(p.x, p.y, isTip ? 5 : 3.5, 0, Math.PI * 2);
       ctx.fillStyle = isTip ? '#ffffff' : '#FFD700';
@@ -201,6 +198,9 @@ export default function GestureBoothPage() {
   const [loadError, setLoadError] = useState(null);
   const [currentGesture, setCurrentGesture] = useState(null);
   const [holdProgress, setHoldProgress] = useState(0);
+  
+  // Lưu Blob và URL ảnh vừa chụp cục bộ (chưa upload)
+  const [capturedBlob, setCapturedBlob] = useState(null);
   const [capturedUrl, setCapturedUrl] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [photoCount, setPhotoCount] = useState(0);
@@ -226,28 +226,56 @@ export default function GestureBoothPage() {
     }
   };
 
+  // 1. CHỤP VÀ LƯU XEM TRƯỚC CỤC BỘ (KHÔNG UPLOAD)
   const triggerCapture = async (gesture, captureCanvas) => {
     const canvas = canvasRef.current;
     if (!canvas || !captureCanvas) return;
     const ctx = canvas.getContext('2d');
 
-    // Flash effect on main canvas
+    // Hiệu ứng Flash trắng khi chụp
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
-    setIsUploading(true);
     try {
-      // Capture clean snapshot without HUD, large countdown or hand landmark skeletons
       const blob = await new Promise((res) =>
         captureCanvas.toBlob(res, 'image/jpeg', 0.92)
       );
       if (!blob) throw new Error('Canvas blob conversion failed');
 
+      // Giải phóng URL cũ nếu có để tránh rò rỉ bộ nhớ
+      if (capturedUrl && capturedUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(capturedUrl);
+      }
+
+      // Tạo URL cục bộ từ Blob để xem trước ngay lập tức
+      const localUrl = URL.createObjectURL(blob);
+      setCapturedBlob(blob);
+      setCapturedUrl(localUrl);
+      setPhotoCount((c) => c + 1);
+      setHoldProgress(0);
+      toast.success('Đã chụp ảnh!');
+    } catch (err) {
+      console.error('Capture error:', err);
+      toast.error('Lỗi khi chụp ảnh');
+    } finally {
+      isCapturingRef.current = false;
+      holdStartRef.current = Date.now(); // Restart timer chụp tiếp
+    }
+  };
+
+  // 2. HÀM LƯU ẢNH THỦ CÔNG LÊN CLOUDINARY VÀ FIREBASE
+  const handleSaveToCloud = async () => {
+    if (!capturedBlob) return;
+
+    setIsUploading(true);
+    try {
       const file = new File(
-        [blob],
+        [capturedBlob],
         `gesture-${Date.now()}.jpg`,
         { type: 'image/jpeg' }
       );
+
+      // Upload Cloudinary
       const result = await uploadToCloudinary(file, 'gesture-booth');
       const imageUrl =
         typeof result === 'string'
@@ -256,27 +284,25 @@ export default function GestureBoothPage() {
 
       if (!imageUrl) throw new Error('No URL returned from Cloudinary');
 
+      // Lưu Metadata vào Firebase Firestore
       const { collection, addDoc, serverTimestamp } = await import(
         'firebase/firestore'
       );
       await addDoc(collection(db, 'photos'), {
         userId: currentUser?.uid || null,
         imageUrl,
-        gesture,
+        gesture: currentGesture,
         type: 'gesture',
         isPublic: true,
         createdAt: serverTimestamp(),
       });
 
-      setCapturedUrl(imageUrl);
-      setPhotoCount((c) => c + 1);
-      setHoldProgress(0);
+      toast.success('Đã lưu ảnh vào bộ sưu tập!');
     } catch (err) {
-      console.error('Capture error:', err);
+      console.error('Save error:', err);
+      toast.error('Lưu ảnh thất bại!');
     } finally {
       setIsUploading(false);
-      isCapturingRef.current = false;
-      holdStartRef.current = Date.now(); // restart hold timer
     }
   };
 
@@ -289,9 +315,7 @@ export default function GestureBoothPage() {
     const render = (timestamp) => {
       ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
 
-      // Always try to draw video when video frames exist
       if (video && video.videoWidth > 0) {
-        // 1. Detect gesture & extract hand landmarks with GestureRecognizer
         let detectedGesture = null;
         let detectedLandmarks = [];
 
@@ -317,7 +341,6 @@ export default function GestureBoothPage() {
           }
         }
 
-        // 2. Handle gesture change
         if (detectedGesture !== lastGestureRef.current) {
           lastGestureRef.current = detectedGesture;
           setCurrentGesture(detectedGesture);
@@ -330,7 +353,6 @@ export default function GestureBoothPage() {
           }
         }
 
-        // 3. Segment person if gesture is active
         let segmentationResult = null;
         if (detectedGesture && imageSegmenterRef.current && video.readyState >= 2) {
           try {
@@ -347,7 +369,7 @@ export default function GestureBoothPage() {
         }
 
         if (detectedGesture) {
-          // LAYER 1 (Bottom): Background (theme bgImage or gradient fallback)
+          // LAYER 1: Background
           const bgImg = bgImagesRef.current[detectedGesture];
           if (bgImg && bgImg.complete && bgImg.naturalWidth > 0) {
             const scale = Math.max(
@@ -368,7 +390,7 @@ export default function GestureBoothPage() {
             ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
           }
 
-          // LAYER 2 (Person): Segmented mirrored person on top of background
+          // LAYER 2: Segmented Person
           const mask =
             segmentationResult?.confidenceMasks?.[0] ||
             segmentationResult?.categoryMask;
@@ -410,7 +432,6 @@ export default function GestureBoothPage() {
             }
             maskCtx.putImageData(imgData, 0, 0);
 
-            // Composite person onto personCanvas
             if (!personCanvasRef.current) {
               personCanvasRef.current = document.createElement('canvas');
               personCanvasRef.current.width = CANVAS_W;
@@ -420,14 +441,12 @@ export default function GestureBoothPage() {
             const pCtx = personCanvas.getContext('2d');
             pCtx.clearRect(0, 0, CANVAS_W, CANVAS_H);
 
-            // A. Draw mirrored camera feed
             pCtx.save();
             pCtx.translate(CANVAS_W, 0);
             pCtx.scale(-1, 1);
             pCtx.drawImage(video, 0, 0, CANVAS_W, CANVAS_H);
             pCtx.restore();
 
-            // B. Mask with mirrored maskCanvas
             pCtx.save();
             pCtx.globalCompositeOperation = 'destination-in';
             pCtx.translate(CANVAS_W, 0);
@@ -435,10 +454,8 @@ export default function GestureBoothPage() {
             pCtx.drawImage(maskCanvas, 0, 0, CANVAS_W, CANVAS_H);
             pCtx.restore();
 
-            // Draw segmented person on top of background
             ctx.drawImage(personCanvas, 0, 0, CANVAS_W, CANVAS_H);
           } else {
-            // Fallback: draw mirrored video if mask is still processing
             ctx.save();
             ctx.translate(CANVAS_W, 0);
             ctx.scale(-1, 1);
@@ -446,7 +463,7 @@ export default function GestureBoothPage() {
             ctx.restore();
           }
 
-          // LAYER 3 (Effects): Falling particles on top of person & background
+          // LAYER 3: Particles
           drawParticles(
             ctx,
             particlesRef.current,
@@ -454,7 +471,6 @@ export default function GestureBoothPage() {
             timestamp
           );
         } else {
-          // No gesture detected: Normal mirrored camera preview
           ctx.save();
           ctx.translate(CANVAS_W, 0);
           ctx.scale(-1, 1);
@@ -462,9 +478,7 @@ export default function GestureBoothPage() {
           ctx.restore();
         }
 
-        // ══════════════════════════════════════
-        // SNAPSHOT CHECK (Clean Capture: Layers 1, 2, 3 WITHOUT HUD & Countdown)
-        // ══════════════════════════════════════
+        // SNAPSHOT CHECK
         let captureCanvasSnapshot = null;
         let currentProgress = 0;
 
@@ -476,7 +490,6 @@ export default function GestureBoothPage() {
             holdStartRef.current = null;
             isCapturingRef.current = true;
 
-            // Copy the exact Layer 1 + 2 + 3 rendering to offscreen canvas
             captureCanvasSnapshot = document.createElement('canvas');
             captureCanvasSnapshot.width = CANVAS_W;
             captureCanvasSnapshot.height = CANVAS_H;
@@ -488,11 +501,7 @@ export default function GestureBoothPage() {
           }
         }
 
-        // ══════════════════════════════════════
-        // LAYER 4 (Top): HUD Overlay (Hand Landmarks, Large Floating Countdown & Enhanced Instructions)
-        // ══════════════════════════════════════
-
-        // Visual feedback: Draw tracked hand skeleton
+        // LAYER 4: HUD Overlay
         if (detectedLandmarks.length > 0) {
           drawHandLandmarks(ctx, detectedLandmarks);
         }
@@ -500,7 +509,6 @@ export default function GestureBoothPage() {
         if (detectedGesture) {
           const theme = GESTURE_THEMES[detectedGesture];
 
-          // 1. High contrast instruction badge at top
           ctx.save();
           ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
           ctx.beginPath();
@@ -518,7 +526,6 @@ export default function GestureBoothPage() {
           ctx.fillText(theme.label, CANVAS_W / 2, 35);
           ctx.restore();
 
-          // 2. Large Floating Countdown (3, 2, 1) in the center of canvas
           const remainingSeconds = Math.max(
             1,
             Math.ceil(((100 - currentProgress) / 100) * (HOLD_DURATION / 1000))
@@ -529,20 +536,17 @@ export default function GestureBoothPage() {
           ctx.textBaseline = 'middle';
           ctx.font = '900 120px Arial, system-ui, sans-serif';
 
-          // Heavy dark stroke for ultra-pop contrast
           ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
           ctx.lineWidth = 12;
           ctx.lineJoin = 'round';
           ctx.strokeText(`${remainingSeconds}`, CANVAS_W / 2, CANVAS_H / 2);
 
-          // Glowing white text fill with drop shadow
           ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
           ctx.shadowBlur = 16;
           ctx.fillStyle = '#ffffff';
           ctx.fillText(`${remainingSeconds}`, CANVAS_W / 2, CANVAS_H / 2);
           ctx.restore();
         } else {
-          // Idle hint with high contrast badge
           ctx.save();
           ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
           ctx.beginPath();
@@ -561,7 +565,6 @@ export default function GestureBoothPage() {
           ctx.restore();
         }
       } else {
-        // Show "camera loading" placeholder
         ctx.fillStyle = '#1a1a2e';
         ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
         ctx.fillStyle = 'rgba(255,255,255,0.4)';
@@ -589,7 +592,6 @@ export default function GestureBoothPage() {
       video.muted = true;
       video.playsInline = true;
 
-      // Wait for video to be ready
       await new Promise((resolve) => {
         video.addEventListener('canplay', resolve, { once: true });
         setTimeout(resolve, 5000);
@@ -606,7 +608,6 @@ export default function GestureBoothPage() {
     }
   };
 
-  // Concurrent MediaPipe Initialization: GestureRecognizer + ImageSegmenter
   useEffect(() => {
     let cancelled = false;
 
@@ -674,7 +675,6 @@ export default function GestureBoothPage() {
     };
   }, []);
 
-  // Start render loop after canvas is mounted
   useEffect(() => {
     if (isLoading || loadError) return;
     const timer = setTimeout(() => {
@@ -698,7 +698,6 @@ export default function GestureBoothPage() {
         bgcolor: '#0a0a1a',
       }}
     >
-      {/* Video element ALWAYS mounted as FIRST child to guarantee ref availability */}
       <video
         ref={videoRef}
         autoPlay
@@ -848,19 +847,24 @@ export default function GestureBoothPage() {
                 </Box>
               )}
 
-              {/* Upload overlay */}
+              {/* Upload overlay khi bấm nút lưu thủ công */}
               {isUploading && (
                 <Box
                   sx={{
                     position: 'absolute',
                     inset: 0,
                     display: 'flex',
+                    flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    bgcolor: 'rgba(0,0,0,0.6)',
+                    gap: 1.5,
+                    bgcolor: 'rgba(0,0,0,0.7)',
                   }}
                 >
                   <CircularProgress sx={{ color: '#e91e8c' }} />
+                  <Typography variant="body2" color="white">
+                    Đang lưu ảnh lên hệ thống...
+                  </Typography>
                 </Box>
               )}
             </Box>
@@ -879,7 +883,7 @@ export default function GestureBoothPage() {
         >
           <Typography
             variant="subtitle2"
-            sx={{ color: 'rgba(255,255,255,0.7)', textAlign: 'center' }}
+            sx={{ color: 'rgba(255,255,255,1)', textAlign: 'center' }}
           >
             Thực hiện cử chỉ để chụp
           </Typography>
@@ -889,7 +893,7 @@ export default function GestureBoothPage() {
               key={key}
               sx={{
                 p: 1.5,
-                borderRadius: 2,
+                borderRadius: 1,
                 bgcolor:
                   currentGesture === key
                     ? 'rgba(233,30,140,0.2)'
@@ -904,12 +908,12 @@ export default function GestureBoothPage() {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                 <Typography fontSize={28}>{theme.emoji}</Typography>
                 <Box sx={{ flex: 1 }}>
-                  <Typography variant="body2" fontWeight={700} color="white">
+                  <Typography variant="body2" fontWeight={700} sx={{ color: 'rgba(255,255,255,0.75)' }}>
                     {theme.name}
                   </Typography>
                   <Typography
                     variant="caption"
-                    sx={{ color: 'rgba(255,255,255,0.5)' }}
+                    sx={{ color: 'rgba(255,255,255,1)' }}
                   >
                     Giữ 3 giây để chụp
                   </Typography>
@@ -927,12 +931,12 @@ export default function GestureBoothPage() {
             </Paper>
           ))}
 
-          {/* Last captured preview */}
+          {/* Khung xem trước & các nút thao tác thủ công */}
           {capturedUrl && (
             <Paper
               sx={{
                 p: 1,
-                borderRadius: 2,
+                borderRadius: 1, 
                 bgcolor: 'rgba(255,255,255,0.05)',
                 border: '1px solid rgba(255,255,255,0.15)',
               }}
@@ -940,18 +944,39 @@ export default function GestureBoothPage() {
               <Typography
                 variant="caption"
                 sx={{
-                  color: 'rgba(255,255,255,0.5)',
+                  color: 'rgba(255,255,255,1)',
                   display: 'block',
                   mb: 0.5,
                 }}
               >
-                Ảnh vừa chụp
+                Ảnh vừa chụp (Xem trước)
               </Typography>
               <img
                 src={capturedUrl}
                 alt="captured"
                 style={{ width: '100%', borderRadius: 8, display: 'block' }}
               />
+              
+              {/* Nút bấm Lưu Cloud thủ công */}
+              <Button
+                size="small"
+                fullWidth
+                variant="contained"
+                startIcon={<CloudUploadIcon />}
+                onClick={handleSaveToCloud}
+                disabled={isUploading}
+                sx={{
+                  mt: 1,
+                  borderRadius: '999px',
+                  bgcolor: '#e91e8c',
+                  '&:hover': { bgcolor: '#c2185b' },
+                  fontSize: '0.75rem',
+                  fontWeight: 'bold',
+                }}
+              >
+                Lưu vào Cloud
+              </Button>
+
               <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
                 <Button
                   size="small"
@@ -959,16 +984,10 @@ export default function GestureBoothPage() {
                   variant="outlined"
                   startIcon={<DownloadIcon />}
                   onClick={() => {
-                    fetch(capturedUrl)
-                      .then((r) => r.blob())
-                      .then((blob) => {
-                        const a = document.createElement('a');
-                        const url = URL.createObjectURL(blob);
-                        a.href = url;
-                        a.download = 'gesture-photo.jpg';
-                        a.click();
-                        URL.revokeObjectURL(url);
-                      });
+                    const a = document.createElement('a');
+                    a.href = capturedUrl;
+                    a.download = `gesture-photo-${Date.now()}.jpg`;
+                    a.click();
                   }}
                   sx={{
                     borderRadius: '999px',
