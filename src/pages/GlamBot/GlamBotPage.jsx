@@ -25,6 +25,9 @@ import { uploadToCloudinary } from "../../cloudinary/upload";
 import { db } from "../../firebase/config";
 import GlamBotEffect from "../../components/GlamBot/GlamBotEffect";
 
+// Feature flag for competition mode
+const IS_COMPETITION_MODE = true;
+
 // Xác định định dạng video tương thích trên trình duyệt (không cần audio codecs)
 function getSupportedMimeType() {
   const types = [
@@ -298,6 +301,12 @@ export default function GlamBotPage() {
 
   // Kích hoạt xuất & Lưu video sau khi xuất hiệu ứng GlamBot Cinematic
   const handleTriggerSaveGlamBot = () => {
+    if (IS_COMPETITION_MODE) {
+      toast("Tính năng lưu Cloud đang tạm khóa để bảo mật dữ liệu trong khuôn khổ cuộc thi AI Riser.", { icon: "🔒" });
+      navigate('/profile');
+      return;
+    }
+
     if (!currentUser) {
       toast.error("Vui lòng đăng nhập để lưu video!");
       navigate("/login");

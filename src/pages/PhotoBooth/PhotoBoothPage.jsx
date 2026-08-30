@@ -31,6 +31,9 @@ import { useAuth } from "../../contexts/AuthContext";
 import { uploadToCloudinary } from "../../cloudinary/upload";
 import { db } from "../../firebase/config";
 
+// Feature flag for competition mode
+const IS_COMPETITION_MODE = true;
+
 // ══════════════════════════════════════
 // SHARED CONSTANTS (defined outside component)
 // ══════════════════════════════════════
@@ -592,6 +595,12 @@ export default function PhotoBoothPage() {
   };
 
   const handleSave = async () => {
+    if (IS_COMPETITION_MODE) {
+      toast("Tính năng lưu Cloud đang tạm khóa để bảo mật dữ liệu trong khuôn khổ cuộc thi AI Riser.", { icon: "🔒" });
+      navigate('/profile');
+      return;
+    }
+
     setIsUploading(true);
     try {
       const canvas = reviewCanvasRef.current;

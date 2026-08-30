@@ -20,6 +20,9 @@ import { useAuth } from '../../contexts/AuthContext';
 import { db } from '../../firebase/config';
 import { uploadToCloudinary } from '../../cloudinary/upload';
 
+// Feature flag for competition mode
+const IS_COMPETITION_MODE = true;
+
 // ══════════════════════════════════════
 // CONSTANTS (outside component)
 // ══════════════════════════════════════
@@ -265,6 +268,12 @@ export default function GestureBoothPage() {
 
   // 2. HÀM LƯU ẢNH THỦ CÔNG LÊN CLOUDINARY VÀ FIREBASE
   const handleSaveToCloud = async () => {
+    if (IS_COMPETITION_MODE) {
+      toast("Tính năng lưu Cloud đang tạm khóa để bảo mật dữ liệu trong khuôn khổ cuộc thi AI Riser.", { icon: "🔒" });
+      navigate('/profile');
+      return;
+    }
+
     if (!capturedBlob) return;
 
     setIsUploading(true);
