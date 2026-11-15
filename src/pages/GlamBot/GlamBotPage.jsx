@@ -20,7 +20,6 @@ import { motion, AnimatePresence } from "motion/react";
 import toast from "react-hot-toast";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
-import { useAuth } from "../../contexts/AuthContext";
 import { uploadToCloudinary } from "../../cloudinary/upload";
 import { db } from "../../firebase/config";
 import GlamBotEffect from "../../components/GlamBot/GlamBotEffect";
@@ -45,7 +44,6 @@ function getSupportedMimeType() {
 }
 
 export default function GlamBotPage() {
-  const { currentUser } = useAuth();
   const navigate = useNavigate();
 
   // Camera & Recorder References
@@ -307,12 +305,6 @@ export default function GlamBotPage() {
       return;
     }
 
-    if (!currentUser) {
-      toast.error("Vui lòng đăng nhập để lưu video!");
-      navigate("/login");
-      return;
-    }
-
     if (glamBotRef.current) {
       setIsSaving(true);
       glamBotRef.current.exportVideo();
@@ -320,25 +312,18 @@ export default function GlamBotPage() {
   };
 
   const handleGlamBotExportComplete = async (exportedBlob) => {
-    if (!currentUser) {
-      toast.error("Vui lòng đăng nhập để lưu video!");
-      navigate("/login");
-      setIsSaving(false);
-      return;
-    }
-
     try {
       const extension = exportedBlob.type.includes("mp4") ? "mp4" : "webm";
       const file = new File(
         [exportedBlob],
-        `glambot_cinematic_${currentUser.uid}_${Date.now()}.${extension}`,
+        `glambot_cinematic_${Date.now()}.${extension}`,
         { type: exportedBlob.type || "video/webm" }
       );
 
       const uploadResult = await uploadToCloudinary(file, "glambot");
 
       await addDoc(collection(db, "videos"), {
-        userId: currentUser.uid,
+        userId: "guest",
         url: uploadResult.url,
         publicId: uploadResult.publicId || "",
         type: "glambot",
@@ -354,93 +339,6 @@ export default function GlamBotPage() {
       setIsSaving(false);
     }
   };
-
-  // Nếu người dùng chưa đăng nhập
-  if (!currentUser) {
-    return (
-      <Box
-        sx={{
-          minHeight: "calc(100vh - 110px)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          py: 6,
-          px: 2,
-        }}
-      >
-        <Container maxWidth="sm">
-          <Paper
-            elevation={0}
-            sx={{
-              p: { xs: 4, sm: 5 },
-              textAlign: "center",
-              borderRadius: "24px",
-              background: "rgba(255, 255, 255, 0.6)",
-              backdropFilter: "blur(16px)",
-              WebkitBackdropFilter: "blur(16px)",
-              border: "1px solid rgba(255, 255, 255, 0.7)",
-              boxShadow: "0 8px 32px 0 rgba(31, 38, 135, 0.08)",
-            }}
-          >
-            <Box
-              sx={{
-                width: 76,
-                height: 76,
-                borderRadius: "50%",
-                backgroundColor: "#ffffff",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#ec4899",
-                boxShadow: "0 10px 20px rgba(236, 72, 153, 0.15)",
-                mb: 2.5,
-              }}
-            >
-              <ErrorIcon sx={{ fontSize: 38 }} />
-            </Box>
-            <Typography
-              variant="h5"
-              sx={{
-                fontWeight: 700,
-                fontFamily: "'Quicksand', sans-serif",
-                color: "#1f2937",
-                mb: 1.5,
-              }}
-            >
-              Yêu cầu đăng nhập
-            </Typography>
-            <Typography
-              variant="body1"
-              sx={{ color: "#6b7280", mb: 3.5, fontFamily: "'Quicksand', sans-serif" }}
-            >
-              Vui lòng đăng nhập để trải nghiệm GlamBot Video và lưu các thước phim thảm đỏ của bạn!
-            </Typography>
-            <Button
-              component={RouterLink}
-              to="/login"
-              variant="contained"
-              sx={{
-                borderRadius: "100px",
-                backgroundColor: "#ec4899",
-                color: "#ffffff",
-                fontWeight: 600,
-                px: 4,
-                py: 1.3,
-                fontFamily: "'Quicksand', sans-serif",
-                boxShadow: "0 6px 18px rgba(236, 72, 153, 0.35)",
-                "&:hover": {
-                  backgroundColor: "#db2777",
-                  boxShadow: "0 8px 22px rgba(236, 72, 153, 0.45)",
-                },
-              }}
-            >
-              Đăng nhập ngay
-            </Button>
-          </Paper>
-        </Container>
-      </Box>
-    );
-  }
 
   return (
     <Box

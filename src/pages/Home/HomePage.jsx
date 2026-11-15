@@ -8,32 +8,14 @@ import {
   Button,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
-import toast from "react-hot-toast";
-import { useAuth } from "../../contexts/AuthContext";
 import Footer from "../../components/Footer/Footer";
 
 export default function HomePage() {
-  const { currentUser } = useAuth();
   const navigate = useNavigate();
 
-  // Xử lý điều hướng khi bấm thẻ tính năng
+  // Xử lý điều hướng trực tiếp khi bấm thẻ tính năng
   const handleFeatureClick = (path) => {
-    if (!currentUser) {
-      toast("Vui lòng đăng nhập trước", {
-        icon: "🔒",
-        style: {
-          borderRadius: "16px",
-          background: "rgba(255, 255, 255, 0.9)",
-          backdropFilter: "blur(12px)",
-          color: "#1e293b",
-          border: "1px solid rgba(236, 72, 153, 0.3)",
-          boxShadow: "0 8px 24px rgba(236, 72, 153, 0.15)",
-        },
-      });
-      navigate("/login", { state: { from: { pathname: path } } });
-    } else {
-      navigate(path);
-    }
+    navigate(path);
   };
 
   const featureCards = [

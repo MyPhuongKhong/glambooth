@@ -5,9 +5,8 @@ import { Box, Container, Typography, Button, Paper, Chip } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import { Toaster } from "react-hot-toast";
 
-import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { AuthProvider } from "./contexts/AuthContext";
 import Navbar from "./components/Navbar/Navbar";
-import ProtectedRoute from "./components/ProtectedRoute/ProtectedRoute";
 import HomePage from "./pages/Home/HomePage";
 import LoginPage from "./pages/Auth/LoginPage";
 import RegisterPage from "./pages/Auth/RegisterPage";
@@ -126,10 +125,8 @@ function PlaceholderModule({ title, icon, subtitle, color, chipText }) {
   );
 }
 
-// Protected Profile Placeholder
+// Profile Placeholder
 function ProfilePage() {
-  const { currentUser } = useAuth();
-
   return (
     <Box
       sx={{
@@ -171,9 +168,7 @@ function ProfilePage() {
               mb: 2,
             }}
           >
-            {currentUser?.displayName
-              ? currentUser.displayName.charAt(0).toUpperCase()
-              : "T"}
+            G
           </Box>
 
           <Typography
@@ -185,14 +180,14 @@ function ProfilePage() {
               mb: 0.5,
             }}
           >
-            {currentUser?.displayName || "Thành viên GlamBooth"}
+            Thành viên GlamBooth
           </Typography>
 
           <Typography
             variant="body2"
             sx={{ color: "#6b7280", mb: 3.5, fontFamily: "'Quicksand', sans-serif" }}
           >
-            {currentUser?.email}
+            Trải nghiệm ứng dụng không cần tài khoản
           </Typography>
 
           <Box
@@ -277,49 +272,14 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
 
-          {/* GlamBot Video Page (Bảo vệ bởi ProtectedRoute) */}
-          <Route
-            path="/glambot"
-            element={
-              <ProtectedRoute>
-                <GlamBotPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/photobooth"
-            element={
-              <ProtectedRoute>
-                <PhotoBoothPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/gesture"
-            element={
-              <ProtectedRoute>
-                <GestureBoothPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/gesture-booth"
-            element={
-              <ProtectedRoute>
-                <GestureBoothPage />
-              </ProtectedRoute>
-            }
-          />
+          {/* Các tính năng mở khóa trực tiếp không cần ProtectedRoute */}
+          <Route path="/glambot" element={<GlamBotPage />} />
+          <Route path="/photobooth" element={<PhotoBoothPage />} />
+          <Route path="/gesture" element={<GestureBoothPage />} />
+          <Route path="/gesture-booth" element={<GestureBoothPage />} />
 
-          {/* Route Profile được bảo vệ bởi ProtectedRoute */}
-          <Route
-            path="/profile"
-            element={
-              <ProtectedRoute>
-                <ProfilePage />
-              </ProtectedRoute>
-            }
-          />
+          {/* Route Profile */}
+          <Route path="/profile" element={<ProfilePage />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

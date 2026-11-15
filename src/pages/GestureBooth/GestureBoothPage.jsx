@@ -16,7 +16,6 @@ import DownloadIcon from '@mui/icons-material/Download';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import CollectionsIcon from '@mui/icons-material/Collections';
 import toast from 'react-hot-toast';
-import { useAuth } from '../../contexts/AuthContext';
 import { db } from '../../firebase/config';
 import { uploadToCloudinary } from '../../cloudinary/upload';
 
@@ -180,7 +179,6 @@ const drawHandLandmarks = (ctx, landmarksList) => {
 };
 
 export default function GestureBoothPage() {
-  const { currentUser } = useAuth();
   const navigate = useNavigate();
 
   const videoRef = useRef(null);
@@ -298,7 +296,7 @@ export default function GestureBoothPage() {
         'firebase/firestore'
       );
       await addDoc(collection(db, 'photos'), {
-        userId: currentUser?.uid || null,
+        userId: 'guest',
         imageUrl,
         gesture: currentGesture,
         type: 'gesture',

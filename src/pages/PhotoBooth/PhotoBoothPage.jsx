@@ -27,7 +27,6 @@ import PhotoLibraryIcon from "@mui/icons-material/PhotoLibrary";
 import toast from "react-hot-toast";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
-import { useAuth } from "../../contexts/AuthContext";
 import { uploadToCloudinary } from "../../cloudinary/upload";
 import { db } from "../../firebase/config";
 
@@ -147,7 +146,6 @@ const drawComposite = (ctx, layout, color, stickerList, slotImages = []) => {
 
 export default function PhotoBoothPage() {
   // All hooks at top level
-  const { currentUser } = useAuth();
   const navigate = useNavigate();
 
   // Step state
@@ -615,18 +613,16 @@ export default function PhotoBoothPage() {
 
       const uploadResult = await uploadToCloudinary(file, "photobooth");
 
-      if (currentUser && currentUser.uid) {
-        await addDoc(collection(db, "photos"), {
-          userId: currentUser.uid,
-          imageUrl: uploadResult.url,
-          publicId: uploadResult.publicId || "",
-          layoutId: selectedLayout.id,
-          frameColorId,
-          type: "photobooth",
-          isPublic: true,
-          createdAt: serverTimestamp(),
-        });
-      }
+      await addDoc(collection(db, "photos"), {
+        userId: "guest",
+        imageUrl: uploadResult.url,
+        publicId: uploadResult.publicId || "",
+        layoutId: selectedLayout.id,
+        frameColorId,
+        type: "photobooth",
+        isPublic: true,
+        createdAt: serverTimestamp(),
+      });
 
       setSavedUrl(uploadResult.url);
       toast.success("Lưu ảnh Photo Booth thành công! ✨");
